@@ -1,18 +1,23 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import AddPerson from "./pages/AddPerson";
-import PeopleList from "./pages/PeopleList";
-import PersonDetail from "./pages/PersonDetail";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { DataProvider } from '@/hooks/useData'
+import Layout from '@/pages/Layout'
+import PeoplePage from '@/pages/PeoplePage'
+import PersonDetail from '@/pages/PersonDetail'
+import MatchesPage from '@/pages/MatchesPage'
 
-function App() {
+export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<PeopleList />} />
-        <Route path="/add" element={<AddPerson />} />
-        <Route path="/person/:id" element={<PersonDetail />} />
-      </Routes>
-    </BrowserRouter>
-  );
+    <DataProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Navigate to="/people" replace />} />
+            <Route path="people" element={<PeoplePage />} />
+            <Route path="people/:id" element={<PersonDetail />} />
+            <Route path="matches" element={<MatchesPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </DataProvider>
+  )
 }
-
-export default App;
