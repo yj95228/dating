@@ -67,7 +67,8 @@ function useDataInternal(): DataContextValue {
   }
 
   const updatePerson = async (id: number, data: PersonInsert) => {
-    const { error } = await supabase.from('people').update(data).eq('id', id)
+    const { id: _id, created_at: _cat, ...rest } = data as Person
+    const { error } = await supabase.from('people').update(rest).eq('id', id)
     if (error) throw error
     await fetchAll()
   }
