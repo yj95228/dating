@@ -108,13 +108,3 @@ VITE_SUPABASE_ANON_KEY=xxxx
 배포 후 폰 브라우저에서:
 - **iPhone**: Safari → 공유 버튼 → "홈 화면에 추가"
 - **Android**: Chrome → 주소창 설치 버튼
-
-## 마이그레이션 이력
-
-| 항목 | 이전 | 현재 |
-|---|---|---|
-| 언어 | JavaScript | TypeScript |
-| 데이터베이스 | Firebase Firestore | Supabase (PostgreSQL) |
-| 이미지 스토리지 | Cloudinary | base64 → Supabase DB 저장 |
-| 스타일링 | Tailwind CSS | Inline styles |
-| 라우팅 | 없음 (단일 페이지) | React Router v6 |
