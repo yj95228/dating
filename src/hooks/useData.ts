@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useContext, createContext, ReactNode, createElement } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Person, Match, PersonInsert, MatchInsert, MatchResult, PersonStatus } from '@/types'
+import type { Person, Match, PersonInsert, MatchInsert, MatchResult } from '@/types'
 
 interface DataContextValue {
   people: Person[]
