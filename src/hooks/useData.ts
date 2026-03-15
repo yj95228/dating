@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useContext, createContext, ReactNode, createElement } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Person, Match, PersonInsert, MatchInsert, MatchResult } from '@/types'
-
-// ── Context ───────────────────────────────────────────
+import type { Person, Match, PersonInsert, MatchInsert, MatchResult, PersonStatus } from '@/types'
 
 interface DataContextValue {
   people: Person[]
@@ -13,6 +11,7 @@ interface DataContextValue {
   addPerson: (data: PersonInsert) => Promise<void>
   updatePerson: (id: number, data: PersonInsert) => Promise<void>
   deletePerson: (id: number) => Promise<void>
+  deactivatePerson: (id: number) => Promise<void>
   addMatch: (data: MatchInsert) => Promise<void>
   updateMatchResult: (id: number, result: MatchResult) => Promise<void>
   deleteMatch: (id: number) => Promise<void>
@@ -30,8 +29,6 @@ export function useData(): DataContextValue {
   if (!ctx) throw new Error('useData must be used inside DataProvider')
   return ctx
 }
-
-// ── Internal hook ─────────────────────────────────────
 
 function useDataInternal(): DataContextValue {
   const [people, setPeople] = useState<Person[]>([])
@@ -67,8 +64,10 @@ function useDataInternal(): DataContextValue {
   }
 
   const updatePerson = async (id: number, data: PersonInsert) => {
-    const { id: _id, created_at: _cat, ...rest } = data as Person
-    const { error } = await supabase.from('people').update(rest).eq('id', id)
+    const { photos, gender, name, year, location, job, height, ideal_type, note, status, is_direct } = data
+    const { error } = await supabase.from('people')
+      .update({ photos, gender, name, year, location, job, height, ideal_type, note, status, is_direct })
+      .eq('id', id)
     if (error) throw error
     await fetchAll()
   }
@@ -76,6 +75,14 @@ function useDataInternal(): DataContextValue {
   const deletePerson = async (id: number) => {
     await supabase.from('matches').delete().or(`male_id.eq.${id},female_id.eq.${id}`)
     const { error } = await supabase.from('people').delete().eq('id', id)
+    if (error) throw error
+    await fetchAll()
+  }
+
+  const deactivatePerson = async (id: number) => {
+    const { error } = await supabase.from('people')
+      .update({ status: '비활성' })
+      .eq('id', id)
     if (error) throw error
     await fetchAll()
   }
@@ -98,5 +105,9 @@ function useDataInternal(): DataContextValue {
     setMatches((prev) => prev.filter((m) => m.id !== id))
   }
 
-  return { people, matches, loading, error, refetch: fetchAll, addPerson, updatePerson, deletePerson, addMatch, updateMatchResult, deleteMatch }
+  return {
+    people, matches, loading, error, refetch: fetchAll,
+    addPerson, updatePerson, deletePerson, deactivatePerson,
+    addMatch, updateMatchResult, deleteMatch,
+  }
 }

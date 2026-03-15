@@ -1,6 +1,6 @@
 export type Gender = 'male' | 'female'
-
 export type MatchResult = '진행중' | '성공' | '실패'
+export type PersonStatus = '활성' | '휴식중' | '비활성'
 
 export interface Person {
   id: number
@@ -9,9 +9,13 @@ export interface Person {
   gender: Gender
   year: string | null
   location: string | null
+  job: string | null
+  height: number | null
   ideal_type: string | null
   note: string | null
   photos: string[]
+  status: PersonStatus
+  is_direct: boolean
 }
 
 export interface Match {

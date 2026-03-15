@@ -121,7 +121,7 @@ export default function MatchesPage() {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button onClick={() => setShowForm(true)} style={S.btnPrimary}>+ 매칭 추가</button>
+        <button onClick={() => setShowForm(true)} className="btn-outline" style={{ marginLeft: 'auto' }}>+ 매칭 추가</button>
       </div>
 
       {matches.length === 0 ? (
