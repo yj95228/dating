@@ -26,6 +26,7 @@ export default function PersonDetail() {
   const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
   const [lightbox, setLightbox] = useState<{ photos: string[]; idx: number } | null>(null)
+  const [showShareSheet, setShowShareSheet] = useState(false)
 
   const person = people.find((p) => p.id === Number(id))
 
@@ -65,18 +66,22 @@ export default function PersonDetail() {
     ].filter(Boolean)
     const text = textParts.join('\n')
 
-    // 사진이 있으면 File로 변환해서 공유
     if (person.photos.length > 0 && navigator.canShare) {
       try {
-        const files = await Promise.all(
+        const photoFiles = await Promise.all(
           person.photos.map(async (url, i) => {
             const res = await fetch(url)
             const blob = await res.blob()
             return new File([blob], `photo_${i + 1}.jpg`, { type: blob.type })
           })
         )
+        // 텍스트도 파일로 변환
+        const textBlob = new Blob([text], { type: 'text/plain' })
+        const textFile = new File([textBlob], 'info.txt', { type: 'text/plain' })
+        const files = [...photoFiles, textFile]
+
         if (navigator.canShare({ files })) {
-          await navigator.share({ files, text })
+          await navigator.share({ files })
           return
         }
       } catch (e) {
@@ -84,12 +89,72 @@ export default function PersonDetail() {
       }
     }
 
-    // 사진 공유 안 되면 텍스트만
     if (navigator.share) {
       await navigator.share({ text })
     } else {
       await navigator.clipboard.writeText(text)
       alert('클립보드에 복사됐어요!')
+    }
+  }
+
+  const shareText = [
+    person.year && `${person.year}년생 (${getAge(person.year)})`,
+    person.height && `${person.height}cm`,
+    person.location,
+    person.job,
+    person.note,
+  ].filter(Boolean).join('\n')
+
+  const handleShareTextOnly = async () => {
+    setShowShareSheet(false)
+    if (navigator.share) {
+      await navigator.share({ text: shareText })
+    } else {
+      await navigator.clipboard.writeText(shareText)
+      alert('클립보드에 복사됐어요!')
+    }
+  }
+
+  const handleSharePhotosOnly = async () => {
+    setShowShareSheet(false)
+    if (!person.photos.length) return
+    try {
+      const files = await Promise.all(
+        person.photos.map(async (url, i) => {
+          const res = await fetch(url)
+          const blob = await res.blob()
+          return new File([blob], `photo_${i + 1}.jpg`, { type: blob.type })
+        })
+      )
+      if (navigator.canShare?.({ files })) {
+        await navigator.share({ files })
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleShareBoth = async () => {
+    setShowShareSheet(false)
+    await navigator.clipboard.writeText(shareText)
+    if (!person.photos.length) {
+      alert('텍스트가 클립보드에 복사됐어요!')
+      return
+    }
+    try {
+      const files = await Promise.all(
+        person.photos.map(async (url, i) => {
+          const res = await fetch(url)
+          const blob = await res.blob()
+          return new File([blob], `photo_${i + 1}.jpg`, { type: blob.type })
+        })
+      )
+      if (navigator.canShare?.({ files })) {
+        alert('텍스트가 클립보드에 복사됐어요!\n사진 공유창이 열립니다.')
+        await navigator.share({ files })
+      }
+    } catch (e) {
+      console.error(e)
     }
   }
 
@@ -143,7 +208,7 @@ export default function PersonDetail() {
               {!isInactive ? (
                 <>
                   <button onClick={() => setShowEdit(true)} className="btn-icon">✏️</button>
-                  <button onClick={handleShare} className="btn-icon">🔗</button>
+                  <button onClick={() => setShowShareSheet(true)} className="btn-icon">🔗</button>
                   <button onClick={() => setShowConfirmDeactivate(true)} className="btn-icon">⏸️</button>
                 </>
               ) : (
@@ -253,6 +318,38 @@ export default function PersonDetail() {
 
       {lightbox && (
         <Lightbox photos={lightbox.photos} startIdx={lightbox.idx} onClose={() => setLightbox(null)} />
+      )}
+
+      {showShareSheet && (
+        <div
+          onClick={() => setShowShareSheet(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', background: '#1a1830', borderRadius: '20px 20px 0 0', padding: '20px 16px 36px', border: '1px solid rgba(255,255,255,0.1)' }}
+          >
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 16 }}>공유 방식 선택</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button onClick={handleShareTextOnly}
+                style={{ padding: '14px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                📋 텍스트만 공유
+              </button>
+              {person.photos.length > 0 && (
+                <button onClick={handleSharePhotosOnly}
+                  style={{ padding: '14px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                  🖼️ 사진만 공유
+                </button>
+              )}
+              {person.photos.length > 0 && (
+                <button onClick={handleShareBoth}
+                  style={{ padding: '14px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                  📋🖼️ 텍스트 + 사진 함께
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
