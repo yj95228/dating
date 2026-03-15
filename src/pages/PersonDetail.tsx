@@ -55,48 +55,6 @@ export default function PersonDetail() {
     setShowEdit(false)
   }
 
-  const handleShare = async () => {
-    const textParts = [
-      person.name,
-      person.year && `${person.year}년생 (${getAge(person.year)})`,
-      person.height && `${person.height}cm`,
-      person.location,
-      person.job,
-      person.note,
-    ].filter(Boolean)
-    const text = textParts.join('\n')
-
-    if (person.photos.length > 0 && navigator.canShare) {
-      try {
-        const photoFiles = await Promise.all(
-          person.photos.map(async (url, i) => {
-            const res = await fetch(url)
-            const blob = await res.blob()
-            return new File([blob], `photo_${i + 1}.jpg`, { type: blob.type })
-          })
-        )
-        // 텍스트도 파일로 변환
-        const textBlob = new Blob([text], { type: 'text/plain' })
-        const textFile = new File([textBlob], 'info.txt', { type: 'text/plain' })
-        const files = [...photoFiles, textFile]
-
-        if (navigator.canShare({ files })) {
-          await navigator.share({ files })
-          return
-        }
-      } catch (e) {
-        console.error(e)
-      }
-    }
-
-    if (navigator.share) {
-      await navigator.share({ text })
-    } else {
-      await navigator.clipboard.writeText(text)
-      alert('클립보드에 복사됐어요!')
-    }
-  }
-
   const shareText = [
     person.year && `${person.year}년생 (${getAge(person.year)})`,
     person.height && `${person.height}cm`,
