@@ -1,10 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { PersonFormState, PersonStatus } from '@/types'
 
 interface PersonFormProps {
   initial?: PersonFormState | null
   onSave: (form: PersonFormState) => void
 }
+
+const DRAFT_KEY = 'person_form_draft'
 
 const defaultForm = (): PersonFormState => ({
   name: null, year: null, location: null, job: null, height: null,
@@ -15,14 +17,25 @@ const defaultForm = (): PersonFormState => ({
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
-async function uploadToCloudinary(file: File): Promise<string> {
+async function uploadToCloudinary(file: File, retries = 2): Promise<string> {
   const fd = new FormData()
   fd.append('file', file)
   fd.append('upload_preset', UPLOAD_PRESET)
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: fd })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error?.message ?? '업로드 실패')
-  return data.secure_url as string
+
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+        method: 'POST', body: fd,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error?.message ?? '업로드 실패')
+      return data.secure_url as string
+    } catch (err) {
+      if (i === retries) throw err
+      await new Promise(r => setTimeout(r, 1000 * (i + 1))) // 1초, 2초 대기 후 재시도
+    }
+  }
+  throw new Error('업로드 실패')
 }
 
 const STATUS_OPTIONS: PersonStatus[] = ['활성', '휴식중', '비활성']
@@ -40,7 +53,29 @@ const field = (label: string, children: React.ReactNode) => (
 )
 
 export default function PersonForm({ initial, onSave }: PersonFormProps) {
-  const [form, setForm] = useState<PersonFormState>(() => initial ?? defaultForm())
+  const [form, setForm] = useState<PersonFormState>(() => {
+    // 수정 모드면 draft 무시
+    if (initial) return initial
+    // 저장된 draft 있으면 복원
+    try {
+      const saved = sessionStorage.getItem(DRAFT_KEY)
+      if (saved) return JSON.parse(saved)
+    } catch { }
+    return defaultForm()
+  })
+
+  // form 바뀔 때마다 draft 저장 (수정 모드 제외)
+  useEffect(() => {
+    if (!initial) {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
+    }
+  }, [form, initial])
+
+  // 저장 완료 시 draft 삭제
+  const handleSave = () => {
+    sessionStorage.removeItem(DRAFT_KEY)
+    onSave(form)
+  }
   const [uploading, setUploading] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
 
@@ -54,8 +89,9 @@ export default function PersonForm({ initial, onSave }: PersonFormProps) {
     try {
       const urls = await Promise.all(files.map(uploadToCloudinary))
       setForm((f) => ({ ...f, photos: [...f.photos, ...urls] }))
-    } catch {
-      alert('사진 업로드에 실패했어요. 다시 시도해주세요.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert(`업로드 실패: ${msg}`)
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -168,7 +204,7 @@ export default function PersonForm({ initial, onSave }: PersonFormProps) {
           className="input-field" style={{ minHeight: 72, resize: 'vertical' }} />
       )}
 
-      <button onClick={() => onSave(form)} disabled={uploading}
+      <button onClick={handleSave} disabled={uploading}
         className="btn-primary" style={{ width: '100%', padding: '14px 0', fontSize: 15, marginTop: 8, opacity: uploading ? 0.5 : 1 }}>
         {uploading ? '업로드 중...' : '저장'}
       </button>
