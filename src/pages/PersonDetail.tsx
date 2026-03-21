@@ -44,7 +44,7 @@ export default function PersonDetail() {
   const sb = STATUS_BADGE[status]
   const relatedMatches = matches.filter((m) => m.male_id === person.id || m.female_id === person.id)
   const metaParts = [
-    person.year && `${person.year}년생 (${getAge(person.year)})`,
+    person.year && `${person.year}년생`,
     person.height && `${person.height}cm`,
     person.location,
     person.job,
