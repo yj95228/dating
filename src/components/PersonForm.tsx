@@ -17,6 +17,27 @@ const defaultForm = (): PersonFormState => ({
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
 
+async function resizeImage(file: File, maxPx = 1920, quality = 0.85): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      canvas.toBlob((blob) => {
+        resolve(new File([blob!], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
+      }, 'image/jpeg', quality)
+    }
+    img.src = url
+  })
+}
+
 async function uploadToCloudinary(file: File, retries = 2): Promise<string> {
   const fd = new FormData()
   fd.append('file', file)
@@ -87,7 +108,8 @@ export default function PersonForm({ initial, onSave }: PersonFormProps) {
     if (!files.length) return
     setUploading(true)
     try {
-      const urls = await Promise.all(files.map(uploadToCloudinary))
+      const resized = await Promise.all(files.map((f) => resizeImage(f)))
+      const urls = await Promise.all(resized.map(uploadToCloudinary))
       setForm((f) => ({ ...f, photos: [...f.photos, ...urls] }))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
