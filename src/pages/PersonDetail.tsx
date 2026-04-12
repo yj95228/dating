@@ -56,7 +56,7 @@ export default function PersonDetail() {
   }
 
   const shareText = [
-    person.year && `${person.year}년생 (${getAge(person.year)})`,
+    person.year && `${person.year}년생`,
     person.height && `${person.height}cm`,
     person.location,
     person.job,
