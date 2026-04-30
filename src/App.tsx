@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { DataProvider } from '@/hooks/useData'
 import { useAuth } from '@/hooks/useAuth'
+import AuthCallback from './pages/AuthCallback'
+import SetPasswordPage from './pages/SetPasswordPage'
 import Layout from '@/pages/Layout'
 import LoginPage from '@/pages/LoginPage'
 import PeoplePage from '@/pages/PeoplePage'
@@ -32,6 +34,8 @@ export default function App() {
               <Route path="people" element={<PeoplePage />} />
               <Route path="people/:id" element={<PersonDetail />} />
               <Route path="matches" element={<MatchesPage />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/set-password" element={<SetPasswordPage />} />
             </Route>
           </Routes>
         </DataProvider>
