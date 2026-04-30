@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 
 export default function Layout() {
   const { matches, loading, error } = useData()
-  const { signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const location = useLocation()
   const isDetail = location.pathname.startsWith('/people/') && location.pathname !== '/people'
 
@@ -49,9 +49,12 @@ export default function Layout() {
                 </div>
               )}
             </div>
-            <button onClick={signOut} style={{ fontSize: 12, color: '#6060a0', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
-              로그아웃
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {user && <div style={{ fontSize: 12, color: '#8080c0' }}>{user.email}</div>}
+              <button onClick={signOut} style={{ fontSize: 12, color: '#6060a0', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                로그아웃
+              </button>
+            </div>
           </div>
         </div>
 

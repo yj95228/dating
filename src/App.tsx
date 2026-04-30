@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { DataProvider } from '@/hooks/useData'
 import { useAuth } from '@/hooks/useAuth'
+import AuthCallback from './pages/AuthCallback'
+import SetPasswordPage from './pages/SetPasswordPage'
 import Layout from '@/pages/Layout'
 import LoginPage from '@/pages/LoginPage'
 import PeoplePage from '@/pages/PeoplePage'
@@ -24,18 +26,27 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthGate>
-        <DataProvider>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Navigate to="/people" replace />} />
-              <Route path="people" element={<PeoplePage />} />
-              <Route path="people/:id" element={<PersonDetail />} />
-              <Route path="matches" element={<MatchesPage />} />
-            </Route>
-          </Routes>
-        </DataProvider>
-      </AuthGate>
+      <Routes>
+        {/* AuthGate 밖 - 인증 처리 페이지 */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
+
+        {/* AuthGate 안 - 로그인 필요 */}
+        <Route path="/*" element={
+          <AuthGate>
+            <DataProvider>
+              <Routes>
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<Navigate to="/people" replace />} />
+                  <Route path="people" element={<PeoplePage />} />
+                  <Route path="people/:id" element={<PersonDetail />} />
+                  <Route path="matches" element={<MatchesPage />} />
+                </Route>
+              </Routes>
+            </DataProvider>
+          </AuthGate>
+        } />
+      </Routes>
     </BrowserRouter>
   )
 }
