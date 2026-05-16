@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useData } from '@/hooks/useData'
 import { useAuth } from '@/hooks/useAuth'
@@ -6,6 +7,10 @@ export default function Layout() {
   const { matches, loading, error } = useData()
   const { user, signOut } = useAuth()
   const location = useLocation()
+  
+  // 프로필 드롭다운 메뉴 상태 관리
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+
   const isDetail = location.pathname.startsWith('/people/') && location.pathname !== '/people'
 
   const stats = {
@@ -49,11 +54,66 @@ export default function Layout() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {user && <div style={{ fontSize: 12, color: '#8080c0' }}>{user.email}</div>}
-              <button onClick={signOut} style={{ fontSize: 12, color: '#6060a0', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                로그아웃
-              </button>
+            
+            {/* 우측 프로필 영역 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
+              {user && (
+                <>
+                  {/* 프로필 아바타 버튼 */}
+                  <button 
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    style={{ 
+                      width: 34, height: 34, borderRadius: '50%', 
+                      background: 'linear-gradient(135deg,#7c3aed,#ec4899)', 
+                      border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, 
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                    }}
+                  >
+                    {user.email?.[0].toUpperCase() ?? '👤'}
+                  </button>
+
+                  {/* 드롭다운 메뉴 */}
+                  {showProfileMenu && (
+                    <>
+                      {/* 백드롭 (메뉴 바깥 클릭 시 닫힘) */}
+                      <div 
+                        onClick={() => setShowProfileMenu(false)} 
+                        style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
+                      />
+                      
+                      {/* 실제 팝업 메뉴 컨테이너 */}
+                      <div style={{ 
+                        position: 'absolute', top: 44, right: 0, zIndex: 50,
+                        background: '#1a1830', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 14, padding: '14px', minWidth: 200,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
+                      }}>
+                        <div style={{ fontSize: 11, color: '#8080c0', marginBottom: 4 }}>로그인된 계정</div>
+                        <div style={{ fontSize: 13, color: '#e0d0ff', marginBottom: 16, wordBreak: 'break-all', fontWeight: 500 }}>
+                          {user.email}
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setShowProfileMenu(false)
+                            signOut()
+                          }} 
+                          style={{ 
+                            width: '100%', padding: '10px 0', borderRadius: 10,
+                            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', 
+                            color: '#f1f0ff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            transition: 'background 0.15s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                        >
+                          로그아웃
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
