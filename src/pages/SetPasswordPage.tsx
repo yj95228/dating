@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 
@@ -20,7 +20,8 @@ export default function SetPasswordPage() {
     })
   }, [])
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
     setError(null)
     if (password.length < 6) {
       setError('비밀번호는 6자 이상이어야 해요')
@@ -54,28 +55,30 @@ export default function SetPasswordPage() {
           {email ? `${email}\n계정의 비밀번호를 설정해주세요` : '앞으로 사용할 비밀번호를 설정해주세요'}
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 6, fontWeight: 600 }}>비밀번호</div>
-          <input type="password" placeholder="6자 이상" value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input-field" />
-        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 6, fontWeight: 600 }}>비밀번호</div>
+            <input type="password" placeholder="6자 이상" value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input-field" />
+          </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 6, fontWeight: 600 }}>비밀번호 확인</div>
-          <input type="password" placeholder="한 번 더 입력" value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            className="input-field" />
-        </div>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 6, fontWeight: 600 }}>비밀번호 확인</div>
+            <input type="password" placeholder="한 번 더 입력" value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className="input-field" />
+          </div>
 
-        {error && (
-          <div style={{ fontSize: 13, color: '#f87171', marginBottom: 16 }}>{error}</div>
-        )}
+          {error && (
+            <div style={{ fontSize: 13, color: '#f87171', marginBottom: 16 }}>{error}</div>
+          )}
 
-        <button onClick={handleSubmit} disabled={loading} className="btn-primary"
-          style={{ width: '100%', padding: '14px 0', fontSize: 15, opacity: loading ? 0.5 : 1 }}>
-          {loading ? '설정 중...' : '완료'}
-        </button>
+          <button type="submit" disabled={loading} className="btn-primary"
+            style={{ width: '100%', padding: '14px 0', fontSize: 15, opacity: loading ? 0.5 : 1 }}>
+            {loading ? '설정 중...' : '완료'}
+          </button>
+        </form>
       </div>
     </div>
   )
