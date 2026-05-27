@@ -7,23 +7,33 @@ export function useAuth() {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        // Supabase가 인증 토큰을 읽고 URL 해시(#)를 지워버리기 전에 미리 캡처해 둡니다.
-        let initialHash = window.location.hash
+        // Supabase가 인증 토큰을 처리하며 URL을 정리하기 전에 콜백 정보를 캡처해 둡니다.
+        const initialUrl = new URL(window.location.href)
+        const hashParams = new URLSearchParams(initialUrl.hash.replace(/^#/, ''))
+        const type = hashParams.get('type') ?? initialUrl.searchParams.get('type')
+        const next = hashParams.get('next') ?? initialUrl.searchParams.get('next')
+        const shouldSetPassword = type === 'invite' || type === 'recovery' || next === '/set-password'
+        let redirectHandled = false
+
+        const needsPasswordSetup = (user: User) => {
+            return shouldSetPassword || Boolean(user.invited_at && !user.user_metadata?.password_set)
+        }
 
         supabase.auth.getSession().then(({ data: { session } }) => {
             setUser(session?.user ?? null)
             setLoading(false)
+
+            if (!redirectHandled && session && needsPasswordSetup(session.user)) {
+                redirectHandled = true
+                window.location.href = '/set-password'
+            }
         })
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            // 캡처해 둔 해시에 type=invite가 포함되어 있는지 확인
-            // INITIAL_SESSION(첫 로드) 또는 SIGNED_IN(로그인 완료) 시점에 모두 체크합니다.
-            const isInvite = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && initialHash.includes('type=invite')
+            const isAuthLink = event === 'SIGNED_IN' || event === 'INITIAL_SESSION'
 
-            if (event === 'PASSWORD_RECOVERY' || isInvite) {
-                initialHash = '' // 중복 실행을 막기 위해 캡처한 해시를 비웁니다.
-
-                // 패스워드 재설정 및 초대 수락 중에도 유저 정보를 유지하여 상단에 이메일이 표시되게 함
+            if (!redirectHandled && (event === 'PASSWORD_RECOVERY' || (isAuthLink && session && needsPasswordSetup(session.user)))) {
+                redirectHandled = true
                 setUser(session?.user ?? null)
                 window.location.href = '/set-password'
                 return

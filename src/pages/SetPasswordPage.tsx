@@ -9,10 +9,14 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
+  const [userMetadata, setUserMetadata] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setEmail(data.user.email ?? null)
+      if (data.user) {
+        setEmail(data.user.email ?? null)
+        setUserMetadata(data.user.user_metadata ?? {})
+      }
     })
   }, [])
 
@@ -28,7 +32,10 @@ export default function SetPasswordPage() {
     }
 
     setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password })
+    const { error } = await supabase.auth.updateUser({
+      password,
+      data: { ...userMetadata, password_set: true },
+    })
     setLoading(false)
     if (error) {
       setError(error.message)

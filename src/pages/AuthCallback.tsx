@@ -1,36 +1,95 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import type { Session } from '@supabase/supabase-js'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Supabase가 세션을 처리하고 URL의 해시를 지우기 전에 미리 캡처합니다.
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const type = hashParams.get('type');
+    const url = new URL(window.location.href)
+    const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''))
+    const code = url.searchParams.get('code')
+    const type = hashParams.get('type') ?? url.searchParams.get('type')
+    const next = hashParams.get('next') ?? url.searchParams.get('next')
+    const hasAuthParams = Boolean(code || hashParams.get('access_token') || hashParams.get('refresh_token') || type)
+    const shouldSetPassword = type === 'invite' || type === 'recovery' || next === '/set-password'
+    let handled = false
+    let fallbackTimer: number | undefined
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // 1. 비밀번호 재설정 이벤트가 발생했는지 확인 (공식 지원 이벤트)
-      if (event === 'PASSWORD_RECOVERY') {
-        navigate('/set-password', { replace: true });
-        return;
-      }
+    const needsPasswordSetup = (session: Session) => {
+      return shouldSetPassword || Boolean(session.user.invited_at && !session.user.user_metadata?.password_set)
+    }
 
-      // 2. 초대(invite) 등 링크를 통한 진입
-      // 컴포넌트 마운트 시 SIGNED_IN 대신 INITIAL_SESSION이 발생할 수 있으므로 session 존재 여부로 확인
-      if (session) {
-        if (type === 'invite') {
-          navigate('/set-password', { replace: true });
-          return;
+    const redirectWithSession = (session: Session) => {
+      if (handled) return
+      handled = true
+      navigate(needsPasswordSetup(session) ? '/set-password' : '/', { replace: true })
+    }
+
+    const waitForAutoSession = () => {
+      if (fallbackTimer) return
+
+      fallbackTimer = window.setTimeout(async () => {
+        if (handled) return
+
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          redirectWithSession(session)
+          return
         }
-        // 일반 로그인은 메인으로
-        navigate('/', { replace: true });
-      }
-    });
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+        handled = true
+        navigate('/login', { replace: true })
+      }, 2500)
+    }
+
+    const finishRedirect = async () => {
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) {
+          console.error('Failed to exchange auth code:', error.message)
+          handled = true
+          navigate('/login', { replace: true })
+          return
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (session) {
+        redirectWithSession(session)
+        return
+      }
+
+      if (!hasAuthParams) {
+        handled = true
+        navigate('/login', { replace: true })
+        return
+      }
+
+      waitForAutoSession()
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        handled = true
+        navigate('/set-password', { replace: true })
+        return
+      }
+
+      if (session) {
+        redirectWithSession(session)
+      }
+    })
+
+    finishRedirect()
+
+    return () => {
+      subscription.unsubscribe()
+      if (fallbackTimer) window.clearTimeout(fallbackTimer)
+    }
+  }, [navigate])
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'rgba(255,255,255,0.5)' }}>
