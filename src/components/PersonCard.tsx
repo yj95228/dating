@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Avatar from './Avatar'
 import ConfirmDialog from './ConfirmDialog'
 import { getAge } from '@/constants'
-import type { Person } from '@/types'
+import type { Person, PersonStatus } from '@/types'
 
 const GENDER_BADGE = {
   male: { label: '남', color: '#c7d2fe', bg: 'rgba(129,140,248,0.2)', border: '#818cf8' },
@@ -14,18 +14,19 @@ const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }
   '비활성': { color: 'rgba(255,255,255,0.3)', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.15)' },
 }
 const STATUS_EMOJI: Record<string, string> = { '활성': '💚', '휴식중': '💛', '비활성': '🩶' }
+const STATUS_OPTIONS: PersonStatus[] = ['활성', '휴식중', '비활성']
 
 interface PersonCardProps {
   person: Person
   onEdit: (p: Person) => void
-  onDeactivate: (id: number) => void
+  onStatusChange: (id: number, status: PersonStatus) => Promise<void>
   onDelete: (id: number) => void
   onPhotoClick: (photos: string[], idx: number) => void
   onClick?: () => void
 }
 
-export default function PersonCard({ person: p, onEdit, onDeactivate, onDelete, onPhotoClick, onClick }: PersonCardProps) {
-  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
+export default function PersonCard({ person: p, onEdit, onStatusChange, onDelete, onPhotoClick, onClick }: PersonCardProps) {
+  const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const isInactive = p.status === '비활성'
@@ -44,6 +45,11 @@ export default function PersonCard({ person: p, onEdit, onDeactivate, onDelete, 
     fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 9999,
     border: `1px solid ${border}`, background: bg, color,
   })
+
+  const changeStatus = async (nextStatus: PersonStatus) => {
+    setShowStatusMenu(false)
+    await onStatusChange(p.id, nextStatus)
+  }
 
   return (
     <>
@@ -73,14 +79,32 @@ export default function PersonCard({ person: p, onEdit, onDeactivate, onDelete, 
               <div style={{ fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {p.name ?? <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: 13 }}>이름 없음</span>}
               </div>
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8 }} onClick={(e) => e.stopPropagation()}>
-                {!isInactive ? (
-                  <>
-                    <button onClick={() => onEdit(p)} className="btn-icon" style={{ fontSize: 12, padding: '4px 6px' }}>✏️</button>
-                    <button onClick={() => setConfirmDeactivate(true)} className="btn-icon" style={{ fontSize: 12, padding: '4px 6px' }}>⏸️</button>
-                  </>
-                ) : (
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                {!isInactive && (
+                  <button onClick={() => onEdit(p)} className="btn-icon" style={{ fontSize: 12, padding: '4px 6px' }}>✏️</button>
+                )}
+                <button onClick={() => setShowStatusMenu((v) => !v)} className="btn-icon" style={{ fontSize: 12, padding: '4px 6px' }} title="상태 변경">🏷️</button>
+                {isInactive && (
                   <button onClick={() => setConfirmDelete(true)} className="btn-icon" style={{ fontSize: 12, padding: '4px 6px' }}>🗑️</button>
+                )}
+                {showStatusMenu && (
+                  <div style={{
+                    position: 'absolute', top: '100%', right: 0, zIndex: 20, marginTop: 6, minWidth: 132,
+                    background: '#1a1830', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
+                    padding: 6, boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+                  }}>
+                    {STATUS_OPTIONS.filter((s) => s !== status).map((s) => (
+                      <button key={s} onClick={() => changeStatus(s)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                          border: 0, borderRadius: 8, background: 'transparent', color: 'rgba(255,255,255,0.78)',
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                        }}>
+                        <span>{STATUS_EMOJI[s]}</span>
+                        <span>{s}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -104,17 +128,6 @@ export default function PersonCard({ person: p, onEdit, onDeactivate, onDelete, 
           </div>
         </div>
       </div>
-
-      {confirmDeactivate && (
-        <ConfirmDialog
-          message={`${p.name ?? '이 인물'}을 비활성화할까요?`}
-          subMessage="나중에 다시 활성화할 수 있어요"
-          confirmLabel="비활성화"
-          confirmColor="linear-gradient(135deg,#6366f1,#8b5cf6)"
-          onConfirm={() => { setConfirmDeactivate(false); onDeactivate(p.id) }}
-          onCancel={() => setConfirmDeactivate(false)}
-        />
-      )}
 
       {confirmDelete && (
         <ConfirmDialog

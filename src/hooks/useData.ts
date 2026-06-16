@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useContext, createContext, ReactNode, createElement } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Person, Match, PersonInsert, MatchInsert, MatchResult } from '@/types'
+import type { Person, Match, PersonInsert, MatchInsert, MatchResult, PersonStatus } from '@/types'
 
 interface DataContextValue {
   people: Person[]
@@ -11,7 +11,7 @@ interface DataContextValue {
   addPerson: (data: PersonInsert) => Promise<void>
   updatePerson: (id: number, data: PersonInsert) => Promise<void>
   deletePerson: (id: number) => Promise<void>
-  deactivatePerson: (id: number) => Promise<void>
+  updatePersonStatus: (id: number, status: PersonStatus) => Promise<void>
   addMatch: (data: MatchInsert) => Promise<void>
   updateMatchResult: (id: number, result: MatchResult) => Promise<void>
   deleteMatch: (id: number) => Promise<void>
@@ -79,9 +79,9 @@ function useDataInternal(): DataContextValue {
     await fetchAll()
   }
 
-  const deactivatePerson = async (id: number) => {
+  const updatePersonStatus = async (id: number, status: PersonStatus) => {
     const { error } = await supabase.from('people')
-      .update({ status: '비활성' })
+      .update({ status })
       .eq('id', id)
     if (error) throw error
     await fetchAll()
@@ -107,7 +107,7 @@ function useDataInternal(): DataContextValue {
 
   return {
     people, matches, loading, error, refetch: fetchAll,
-    addPerson, updatePerson, deletePerson, deactivatePerson,
+    addPerson, updatePerson, deletePerson, updatePersonStatus,
     addMatch, updateMatchResult, deleteMatch,
   }
 }

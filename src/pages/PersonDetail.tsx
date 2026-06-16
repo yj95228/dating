@@ -7,7 +7,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import Lightbox from '@/components/Lightbox'
 import Avatar from '@/components/Avatar'
 import { getAge, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
-import type { PersonFormState } from '@/types'
+import type { PersonFormState, PersonStatus } from '@/types'
 
 const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }> = {
   '활성': { color: '#6ee7b7', bg: 'rgba(52,211,153,0.15)', border: '#34d399' },
@@ -17,13 +17,14 @@ const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }
 const STATUS_EMOJI: Record<string, string> = {
   '활성': '💚', '휴식중': '💛', '비활성': '🩶',
 }
+const STATUS_OPTIONS: PersonStatus[] = ['활성', '휴식중', '비활성']
 
 export default function PersonDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { people, matches, updatePerson, deactivatePerson, deletePerson } = useData()
+  const { people, matches, updatePerson, updatePersonStatus, deletePerson } = useData()
   const [showEdit, setShowEdit] = useState(false)
-  const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false)
+  const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
   const [lightbox, setLightbox] = useState<{ photos: string[]; idx: number } | null>(null)
   const [showShareSheet, setShowShareSheet] = useState(false)
@@ -116,9 +117,9 @@ export default function PersonDetail() {
     }
   }
 
-  const handleDeactivate = async () => {
-    await deactivatePerson(person.id)
-    setShowConfirmDeactivate(false)
+  const handleStatusChange = async (nextStatus: PersonStatus) => {
+    setShowStatusMenu(false)
+    await updatePersonStatus(person.id, nextStatus)
   }
 
   const handleDelete = async () => {
@@ -162,15 +163,35 @@ export default function PersonDetail() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              {!isInactive ? (
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0, position: 'relative' }}>
+              {!isInactive && (
                 <>
                   <button onClick={() => setShowEdit(true)} className="btn-icon">✏️</button>
                   <button onClick={() => setShowShareSheet(true)} className="btn-icon">🔗</button>
-                  <button onClick={() => setShowConfirmDeactivate(true)} className="btn-icon">⏸️</button>
                 </>
-              ) : (
+              )}
+              <button onClick={() => setShowStatusMenu((v) => !v)} className="btn-icon" title="상태 변경">🏷️</button>
+              {isInactive && (
                 <button onClick={() => setShowConfirmDelete(true)} className="btn-icon">🗑️</button>
+              )}
+              {showStatusMenu && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, zIndex: 20, marginTop: 6, minWidth: 132,
+                  background: '#1a1830', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
+                  padding: 6, boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+                }}>
+                  {STATUS_OPTIONS.filter((s) => s !== status).map((s) => (
+                    <button key={s} onClick={() => handleStatusChange(s)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                        border: 0, borderRadius: 8, background: 'transparent', color: 'rgba(255,255,255,0.78)',
+                        fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                      }}>
+                      <span>{STATUS_EMOJI[s]}</span>
+                      <span>{s}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -250,17 +271,6 @@ export default function PersonDetail() {
         <Modal title="인물 수정" onClose={() => setShowEdit(false)}>
           <PersonForm initial={person} onSave={handleSave} />
         </Modal>
-      )}
-
-      {showConfirmDeactivate && (
-        <ConfirmDialog
-          message={`${person.name ?? '이 인물'}을 비활성화할까요?`}
-          subMessage="나중에 다시 활성화할 수 있어요"
-          confirmLabel="비활성화"
-          confirmColor="linear-gradient(135deg,#6366f1,#8b5cf6)"
-          onConfirm={handleDeactivate}
-          onCancel={() => setShowConfirmDeactivate(false)}
-        />
       )}
 
       {showConfirmDelete && (
