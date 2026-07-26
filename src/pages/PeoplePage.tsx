@@ -76,6 +76,7 @@ export default function PeoplePage() {
   const filtered = base
     .filter((p) => filterG === 'all' || p.gender === filterG)
     .filter((p) => showDirect === null ? true : showDirect === 'true' ? p.is_direct : !p.is_direct)
+    .sort((a, b) => Number(b.is_direct) - Number(a.is_direct))
 
   // 적용된 필터 수 (성별 제외)
   const activeFilterCount = [statusFilter !== 'all', showDirect !== null].filter(Boolean).length
