@@ -11,6 +11,8 @@ import MatchesPage from '@/pages/MatchesPage'
 
 function AuthGate() {
   const { user, role, loading } = useAuth()
+  const savedGender = user?.user_metadata?.gender
+  const viewerGender = savedGender === 'male' || savedGender === 'female' ? savedGender : null
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5a5a80', fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -21,7 +23,7 @@ function AuthGate() {
   if (!user) return <LoginPage />
 
   return (
-    <DataProvider role={role}>
+    <DataProvider role={role} viewerGender={viewerGender}>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/people" replace />} />

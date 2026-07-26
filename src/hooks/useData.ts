@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useContext, createContext, ReactNode, createElement } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Person, Match, PersonInsert, MatchInsert, MatchResult, PersonStatus, UserRole } from '@/types'
+import type { Person, Match, PersonInsert, MatchInsert, MatchResult, PersonStatus, UserRole, Gender } from '@/types'
 
 interface DataContextValue {
   people: Person[]
@@ -8,6 +8,7 @@ interface DataContextValue {
   loading: boolean
   error: string | null
   role: UserRole
+  viewerGender: Gender | null
   canManage: boolean
   refetch: () => Promise<void>
   addPerson: (data: PersonInsert) => Promise<void>
@@ -21,8 +22,8 @@ interface DataContextValue {
 
 const DataContext = createContext<DataContextValue | null>(null)
 
-export function DataProvider({ children, role }: { children: ReactNode; role: UserRole }) {
-  const value = useDataInternal(role)
+export function DataProvider({ children, role, viewerGender }: { children: ReactNode; role: UserRole; viewerGender: Gender | null }) {
+  const value = useDataInternal(role, viewerGender)
   return createElement(DataContext.Provider, { value }, children)
 }
 
@@ -32,7 +33,7 @@ export function useData(): DataContextValue {
   return ctx
 }
 
-function useDataInternal(role: UserRole): DataContextValue {
+function useDataInternal(role: UserRole, viewerGender: Gender | null): DataContextValue {
   const [people, setPeople] = useState<Person[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
@@ -127,7 +128,7 @@ function useDataInternal(role: UserRole): DataContextValue {
   }
 
   return {
-    people, matches, loading, error, role, canManage, refetch: fetchAll,
+    people, matches, loading, error, role, viewerGender, canManage, refetch: fetchAll,
     addPerson, updatePerson, deletePerson, updatePersonStatus,
     addMatch, updateMatchResult, deleteMatch,
   }

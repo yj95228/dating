@@ -6,18 +6,31 @@ import PersonCard from '@/components/PersonCard'
 import PersonForm from '@/components/PersonForm'
 import type { Person, PersonFormState, GenderFilter, PersonStatus } from '@/types'
 
-type StatusFilter = 'active' | 'resting' | 'inactive'
+type StatusFilter = 'all' | 'active' | 'resting' | 'inactive'
 
 export default function PeoplePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { people, canManage, addPerson, updatePerson, updatePersonStatus, deletePerson } = useData()
+  const { people, canManage, viewerGender, addPerson, updatePerson, updatePersonStatus, deletePerson } = useData()
   const [showFilter, setShowFilter] = useState(false)
   const [formState, setFormState] = useState<{ open: boolean; person: Person | null }>({ open: false, person: null })
 
-  const filterG = (searchParams.get('gender') ?? 'all') as GenderFilter
-  const statusFilter = searchParams.get('status') as StatusFilter | null
-  const showInactive = statusFilter === 'inactive' || searchParams.get('inactive') === 'true'
+  const defaultGender: GenderFilter = !canManage && viewerGender === 'male'
+    ? 'female'
+    : !canManage && viewerGender === 'female'
+      ? 'male'
+      : 'all'
+  const genderParam = searchParams.get('gender')
+  const filterG: GenderFilter = genderParam === 'male' || genderParam === 'female' || genderParam === 'all'
+    ? genderParam
+    : defaultGender
+  const statusParam = searchParams.get('status')
+  const statusFilter: StatusFilter = searchParams.get('inactive') === 'true'
+    ? 'inactive'
+    : statusParam === 'all' || statusParam === 'resting' || statusParam === 'inactive'
+      ? statusParam
+      : 'active'
+  const showInactive = statusFilter === 'inactive'
   const showDirect = searchParams.get('direct')
 
   const setFilter = (key: string, value: string | null) => {
@@ -29,11 +42,11 @@ export default function PeoplePage() {
     }, { replace: true })
   }
 
-  const setStatusFilter = (value: StatusFilter | null) => {
+  const setStatusFilter = (value: StatusFilter) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('inactive')
-      if (value === null) next.delete('status')
+      if (value === 'active') next.delete('status')
       else next.set('status', value)
       return next
     }, { replace: true })
@@ -57,7 +70,7 @@ export default function PeoplePage() {
     if (statusFilter === 'active') return p.status === '활성'
     if (statusFilter === 'resting') return p.status === '휴식중'
     if (showInactive) return p.status === '비활성'
-    return p.status !== '비활성'
+    return true
   })
 
   const filtered = base
@@ -65,10 +78,10 @@ export default function PeoplePage() {
     .filter((p) => showDirect === null ? true : showDirect === 'true' ? p.is_direct : !p.is_direct)
 
   // 적용된 필터 수 (성별 제외)
-  const activeFilterCount = [statusFilter !== null || searchParams.get('inactive') === 'true', showDirect !== null].filter(Boolean).length
+  const activeFilterCount = [statusFilter !== 'all', showDirect !== null].filter(Boolean).length
 
   const genderBtn = (label: string, value: GenderFilter, activeColor: { border: string; bg: string; color: string }) => (
-    <button key={value} onClick={() => setFilter('gender', value === 'all' ? null : value)}
+    <button key={value} onClick={() => setFilter('gender', value)}
       style={{
         padding: '8px 14px', borderRadius: 10, border: '1px solid', fontSize: 13,
         fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit',
@@ -137,13 +150,13 @@ export default function PeoplePage() {
           <div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>상태</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {filterChip('전체', !statusFilter && !showInactive, () => setStatusFilter(null),
+              {filterChip('전체', statusFilter === 'all', () => setStatusFilter('all'),
                 { border: '#a78bfa', bg: 'rgba(167,139,250,0.2)', color: '#c4b5fd' })}
-              {filterChip('💚 활성', statusFilter === 'active', () => setStatusFilter(statusFilter === 'active' ? null : 'active'),
+              {filterChip('💚 활성', statusFilter === 'active', () => setStatusFilter('active'),
                 { border: '#34d399', bg: 'rgba(52,211,153,0.15)', color: '#6ee7b7' })}
-              {filterChip('💛 휴식중', statusFilter === 'resting', () => setStatusFilter(statusFilter === 'resting' ? null : 'resting'),
+              {filterChip('💛 휴식중', statusFilter === 'resting', () => setStatusFilter('resting'),
                 { border: '#fbbf24', bg: 'rgba(251,191,36,0.15)', color: '#fde68a' })}
-              {filterChip(`🩶 비활성`, showInactive, () => setStatusFilter(showInactive ? null : 'inactive'),
+              {filterChip(`🩶 비활성`, showInactive, () => setStatusFilter('inactive'),
                 { border: 'rgba(255,255,255,0.3)', bg: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' })}
             </div>
           </div>
@@ -158,6 +171,7 @@ export default function PeoplePage() {
       ) : (
         filtered.map((p) => (
           <PersonCard key={p.id} person={p}
+            people={people}
             canManage={canManage}
             onEdit={openEdit}
             onStatusChange={handleStatusChange}

@@ -6,7 +6,7 @@ import PersonForm from '@/components/PersonForm'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import Lightbox from '@/components/Lightbox'
 import Avatar from '@/components/Avatar'
-import { getAge, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
+import { getAge, getPersonDisplayName, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
 import type { PersonFormState, PersonStatus } from '@/types'
 
 const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }> = {
@@ -43,6 +43,7 @@ export default function PersonDetail() {
   const isInactive = person.status === '비활성'
   const status = person.status ?? '활성'
   const sb = STATUS_BADGE[status]
+  const displayName = getPersonDisplayName(person, people)
   const relatedMatches = matches.filter((m) => m.male_id === person.id || m.female_id === person.id)
   const metaParts = [
     person.year && `${person.year}년생 (${getAge(person.year)})`,
@@ -147,7 +148,7 @@ export default function PersonDetail() {
       {/* 프로필 헤더 */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24 }}>
         <Avatar
-          photos={person.photos} name={person.name ?? '?'}
+          photos={person.photos} name={displayName}
           gender={person.gender} pid={person.id} size={80}
           onClick={person.photos.length > 0 ? () => setLightbox({ photos: person.photos, idx: 0 }) : undefined}
         />
@@ -155,7 +156,7 @@ export default function PersonDetail() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontSize: 20, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>
-                {person.name ?? <span style={{ color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>이름 없음</span>}
+                {displayName}
               </div>
               {metaParts.length > 0 && (
                 <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.8 }}>

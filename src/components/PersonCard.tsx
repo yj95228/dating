@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Avatar from './Avatar'
 import ConfirmDialog from './ConfirmDialog'
-import { getAge } from '@/constants'
+import { getAge, getPersonDisplayName } from '@/constants'
 import type { Person, PersonStatus } from '@/types'
 
 const GENDER_BADGE = {
@@ -18,6 +18,7 @@ const STATUS_OPTIONS: PersonStatus[] = ['활성', '휴식중', '비활성']
 
 interface PersonCardProps {
   person: Person
+  people: Person[]
   canManage: boolean
   onEdit: (p: Person) => void
   onStatusChange: (id: number, status: PersonStatus) => Promise<void>
@@ -26,7 +27,7 @@ interface PersonCardProps {
   onClick?: () => void
 }
 
-export default function PersonCard({ person: p, canManage, onEdit, onStatusChange, onDelete, onPhotoClick, onClick }: PersonCardProps) {
+export default function PersonCard({ person: p, people, canManage, onEdit, onStatusChange, onDelete, onPhotoClick, onClick }: PersonCardProps) {
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -34,6 +35,7 @@ export default function PersonCard({ person: p, canManage, onEdit, onStatusChang
   const status = p.status ?? '활성'
   const gb = GENDER_BADGE[p.gender]
   const sb = STATUS_BADGE[status]
+  const displayName = getPersonDisplayName(p, people)
 
   const meta = [
     p.year && `${p.year}년생 (${getAge(p.year)})`,
@@ -61,7 +63,7 @@ export default function PersonCard({ person: p, canManage, onEdit, onStatusChang
           {/* 아바타 */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <Avatar
-              photos={p.photos} name={p.name ?? '?'} gender={p.gender} pid={p.id} size={48}
+              photos={p.photos} name={displayName} gender={p.gender} pid={p.id} size={48}
               onClick={(e) => { e?.stopPropagation(); if (p.photos.length > 0) onPhotoClick(p.photos, 0) }}
             />
             <span style={{ position: 'absolute', top: -4, left: -4, ...badgeStyle(gb.color, gb.bg, gb.border) }}>
@@ -78,7 +80,7 @@ export default function PersonCard({ person: p, canManage, onEdit, onStatusChang
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {p.name ?? <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: 13 }}>이름 없음</span>}
+                {displayName}
               </div>
               {canManage && <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                 {!isInactive && (

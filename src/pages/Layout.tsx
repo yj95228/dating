@@ -118,9 +118,9 @@ export default function Layout() {
           </div>
         </div>
 
-        {!isDetail && (
+        {!isDetail && canManage && (
           <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 10px', display: 'flex', gap: 6 }}>
-            {[{ to: '/people', label: '인물' }, ...(canManage ? [{ to: '/matches', label: '매칭' }] : [])].map(({ to, label }) => (
+            {[{ to: '/people', label: '인물' }, { to: '/matches', label: '매칭' }].map(({ to, label }) => (
               <NavLink key={to} to={to}
                 style={({ isActive }) => ({
                   flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 10,

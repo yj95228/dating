@@ -1,4 +1,4 @@
-import type { MatchResult } from '@/types'
+import type { MatchResult, Person } from '@/types'
 
 export const RESULTS: MatchResult[] = ['진행중', '성공', '실패']
 
@@ -31,3 +31,14 @@ export const getAge = (year: string | null): string =>
 
 export const getAvatarBg = (gender: 'male' | 'female', id: number): string =>
   (gender === 'male' ? MALE_GRADIENTS : FEMALE_GRADIENTS)[id % 3]
+
+export const getPersonDisplayName = (person: Person, people: Person[]): string => {
+  if (person.name?.trim()) return person.name.trim()
+
+  const sameGender = people
+    .filter((candidate) => candidate.gender === person.gender)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id)
+  const sequence = sameGender.findIndex((candidate) => candidate.id === person.id) + 1
+
+  return `${person.gender === 'male' ? '남자' : '여자'} ${sequence || 1}`
+}
