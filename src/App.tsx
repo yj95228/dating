@@ -9,8 +9,8 @@ import PeoplePage from '@/pages/PeoplePage'
 import PersonDetail from '@/pages/PersonDetail'
 import MatchesPage from '@/pages/MatchesPage'
 
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+function AuthGate() {
+  const { user, role, loading } = useAuth()
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5a5a80', fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -20,7 +20,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!user) return <LoginPage />
 
-  return <>{children}</>
+  return (
+    <DataProvider role={role}>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Navigate to="/people" replace />} />
+          <Route path="people" element={<PeoplePage />} />
+          <Route path="people/:id" element={<PersonDetail />} />
+          <Route path="matches" element={<MatchesPage />} />
+        </Route>
+      </Routes>
+    </DataProvider>
+  )
 }
 
 export default function App() {
@@ -32,20 +43,7 @@ export default function App() {
         <Route path="/set-password" element={<SetPasswordPage />} />
 
         {/* AuthGate 안 - 로그인 필요 */}
-        <Route path="/*" element={
-          <AuthGate>
-            <DataProvider>
-              <Routes>
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Navigate to="/people" replace />} />
-                  <Route path="people" element={<PeoplePage />} />
-                  <Route path="people/:id" element={<PersonDetail />} />
-                  <Route path="matches" element={<MatchesPage />} />
-                </Route>
-              </Routes>
-            </DataProvider>
-          </AuthGate>
-        } />
+        <Route path="/*" element={<AuthGate />} />
       </Routes>
     </BrowserRouter>
   )

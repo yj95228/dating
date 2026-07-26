@@ -22,7 +22,7 @@ const STATUS_OPTIONS: PersonStatus[] = ['활성', '휴식중', '비활성']
 export default function PersonDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { people, matches, updatePerson, updatePersonStatus, deletePerson } = useData()
+  const { people, matches, canManage, updatePerson, updatePersonStatus, deletePerson } = useData()
   const [showEdit, setShowEdit] = useState(false)
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
@@ -163,7 +163,7 @@ export default function PersonDetail() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0, position: 'relative' }}>
+            {canManage && <div style={{ display: 'flex', gap: 6, flexShrink: 0, position: 'relative' }}>
               {!isInactive && (
                 <>
                   <button onClick={() => setShowEdit(true)} className="btn-icon">✏️</button>
@@ -193,7 +193,7 @@ export default function PersonDetail() {
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* 배지들 */}
@@ -238,7 +238,7 @@ export default function PersonDetail() {
       )}
 
       {/* 매칭 히스토리 */}
-      <div>
+      {canManage && <div>
         <div className="section-label">매칭 히스토리 ({relatedMatches.length}건)</div>
         {relatedMatches.length === 0 ? (
           <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.25)', padding: '16px 0' }}>아직 매칭 기록이 없어요</div>
@@ -265,7 +265,7 @@ export default function PersonDetail() {
             )
           })
         )}
-      </div>
+      </div>}
 
       {showEdit && (
         <Modal title="인물 수정" onClose={() => setShowEdit(false)}>

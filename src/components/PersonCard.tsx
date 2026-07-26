@@ -18,6 +18,7 @@ const STATUS_OPTIONS: PersonStatus[] = ['활성', '휴식중', '비활성']
 
 interface PersonCardProps {
   person: Person
+  canManage: boolean
   onEdit: (p: Person) => void
   onStatusChange: (id: number, status: PersonStatus) => Promise<void>
   onDelete: (id: number) => void
@@ -25,7 +26,7 @@ interface PersonCardProps {
   onClick?: () => void
 }
 
-export default function PersonCard({ person: p, onEdit, onStatusChange, onDelete, onPhotoClick, onClick }: PersonCardProps) {
+export default function PersonCard({ person: p, canManage, onEdit, onStatusChange, onDelete, onPhotoClick, onClick }: PersonCardProps) {
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -79,7 +80,7 @@ export default function PersonCard({ person: p, onEdit, onStatusChange, onDelete
               <div style={{ fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {p.name ?? <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: 13 }}>이름 없음</span>}
               </div>
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+              {canManage && <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                 {!isInactive && (
                   <button onClick={() => onEdit(p)} className="btn-icon" style={{ fontSize: 12, padding: '4px 6px' }}>✏️</button>
                 )}
@@ -106,7 +107,7 @@ export default function PersonCard({ person: p, onEdit, onStatusChange, onDelete
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
 
             {meta && (

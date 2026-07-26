@@ -11,7 +11,7 @@ type StatusFilter = 'active' | 'resting' | 'inactive'
 export default function PeoplePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { people, addPerson, updatePerson, updatePersonStatus, deletePerson } = useData()
+  const { people, canManage, addPerson, updatePerson, updatePersonStatus, deletePerson } = useData()
   const [showFilter, setShowFilter] = useState(false)
   const [formState, setFormState] = useState<{ open: boolean; person: Person | null }>({ open: false, person: null })
 
@@ -114,7 +114,7 @@ export default function PeoplePage() {
           필터 {showFilter ? '▲' : '▼'}
         </button>
 
-        <button onClick={openAdd} className="btn-outline" style={{ marginLeft: 'auto', flexShrink: 0 }}>+ 인물 추가</button>
+        <button onClick={openAdd} className="btn-outline" style={{ display: canManage ? undefined : 'none', marginLeft: 'auto', flexShrink: 0 }}>+ 인물 추가</button>
       </div>
 
       {/* 필터 패널 */}
@@ -158,6 +158,7 @@ export default function PeoplePage() {
       ) : (
         filtered.map((p) => (
           <PersonCard key={p.id} person={p}
+            canManage={canManage}
             onEdit={openEdit}
             onStatusChange={handleStatusChange}
             onDelete={(id) => deletePerson(id)}

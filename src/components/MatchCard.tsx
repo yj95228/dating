@@ -8,11 +8,12 @@ import type { Match, MatchResult, Person } from '@/types'
 interface MatchCardProps {
   match: Match
   people: Person[]
+  canManage: boolean
   onUpdateResult: (id: number, result: MatchResult) => void
   onDelete: (id: number) => void
 }
 
-export default function MatchCard({ match: m, people, onUpdateResult, onDelete }: MatchCardProps) {
+export default function MatchCard({ match: m, people, canManage, onUpdateResult, onDelete }: MatchCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const male = people.find((p) => p.id === m.male_id)
   const female = people.find((p) => p.id === m.female_id)
@@ -20,9 +21,9 @@ export default function MatchCard({ match: m, people, onUpdateResult, onDelete }
   return (
     <>
       <div style={S.card}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+        {canManage && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
           <button onClick={() => setConfirmDelete(true)} style={{ ...S.iconBtn, fontSize: 11, padding: '3px 8px' }}>🗑️</button>
-        </div>
+        </div>}
 
         {/* 페어 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -54,12 +55,13 @@ export default function MatchCard({ match: m, people, onUpdateResult, onDelete }
               <button
                 key={r}
                 onClick={() => onUpdateResult(m.id, r)}
+                disabled={!canManage}
                 style={{
                   flex: 1, padding: '7px 0', borderRadius: 10, fontSize: 12, fontWeight: 600,
                   border: `1px solid ${active ? c : 'rgba(255,255,255,0.08)'}`,
                   background: active ? `${c}20` : 'rgba(255,255,255,0.03)',
                   color: active ? c : '#5050a0',
-                  cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif",
+                  cursor: canManage ? 'pointer' : 'default', fontFamily: "'Noto Sans KR', sans-serif",
                   transition: 'all 0.15s',
                 }}
               >

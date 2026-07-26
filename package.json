@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docs:check": "node scripts/check-env-example.mjs",
+    "supabase:status": "supabase status",
+    "supabase:migrations": "supabase migration list"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

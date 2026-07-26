@@ -1,4 +1,5 @@
 export type Gender = 'male' | 'female'
+export type UserRole = 'admin' | 'viewer'
 export type MatchResult = '진행중' | '성공' | '실패'
 export type PersonStatus = '활성' | '휴식중' | '비활성'
 

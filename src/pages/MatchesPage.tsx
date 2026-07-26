@@ -61,7 +61,7 @@ function PersonPickerModal({
 }
 
 export default function MatchesPage() {
-  const { people, matches, addMatch, updateMatchResult, deleteMatch } = useData()
+  const { people, matches, canManage, addMatch, updateMatchResult, deleteMatch } = useData()
 
   const [showForm, setShowForm] = useState(false)
   const [mForm, setMForm] = useState<MatchFormState>({ maleId: '', femaleId: '', note: '' })
@@ -118,10 +118,18 @@ export default function MatchesPage() {
     </div>
   )
 
+  if (!canManage) {
+    return (
+      <div style={{ textAlign: 'center', padding: '64px 0', color: 'rgba(255,255,255,0.35)' }}>
+        매칭 기록은 관리자만 볼 수 있어요.
+      </div>
+    )
+  }
+
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button onClick={() => setShowForm(true)} className="btn-outline" style={{ marginLeft: 'auto' }}>+ 매칭 추가</button>
+        <button onClick={() => setShowForm(true)} className="btn-outline" style={{ display: canManage ? undefined : 'none', marginLeft: 'auto' }}>+ 매칭 추가</button>
       </div>
 
       {matches.length === 0 ? (
@@ -133,6 +141,7 @@ export default function MatchesPage() {
         matches.map((m) => (
           <MatchCard
             key={m.id} match={m} people={people}
+            canManage={canManage}
             onUpdateResult={(id: number, result: MatchResult) => updateMatchResult(id, result)}
             onDelete={handleDelete}
           />

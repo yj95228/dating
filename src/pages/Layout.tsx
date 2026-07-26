@@ -4,7 +4,7 @@ import { useData } from '@/hooks/useData'
 import { useAuth } from '@/hooks/useAuth'
 
 export default function Layout() {
-  const { matches, loading, error } = useData()
+  const { matches, canManage, loading, error } = useData()
   const { user, signOut } = useAuth()
   const location = useLocation()
   
@@ -48,7 +48,7 @@ export default function Layout() {
               <h1 style={{ margin: 0, fontSize: 21, fontFamily: "'Noto Serif KR', serif", fontWeight: 700, background: 'linear-gradient(135deg,#c4b5fd,#f9a8d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 💘 소개팅 주선 노트
               </h1>
-              {!isDetail && (
+              {!isDetail && canManage && (
                 <div style={{ fontSize: 11, color: '#5a5a80', marginTop: 4 }}>
                   주선 {stats.total}건 · 성공 {stats.success}건 · 진행중 {stats.ongoing}건
                 </div>
@@ -120,7 +120,7 @@ export default function Layout() {
 
         {!isDetail && (
           <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 10px', display: 'flex', gap: 6 }}>
-            {[{ to: '/people', label: '👥 인물' }, { to: '/matches', label: '💌 매칭' }].map(({ to, label }) => (
+            {[{ to: '/people', label: '인물' }, ...(canManage ? [{ to: '/matches', label: '매칭' }] : [])].map(({ to, label }) => (
               <NavLink key={to} to={to}
                 style={({ isActive }) => ({
                   flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 10,
