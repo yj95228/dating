@@ -33,6 +33,7 @@ This is a private blind-date note app built with React 18, TypeScript, Vite, Rea
 - When changing user-facing features, setup steps, routes, auth behavior, or database shape, update `README.md` in the same change.
 - Treat `dist/` as generated output. Do not edit it by hand.
 - Preserve user changes in the working tree. Do not revert unrelated files.
+- Write commit messages with a `feat:` or `fix:` prefix followed by a Korean description.
 
 ## Supabase Rules
 
