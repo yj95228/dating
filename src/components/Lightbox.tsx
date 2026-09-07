@@ -6,12 +6,53 @@ interface LightboxProps {
   onClose: () => void
 }
 
+interface TouchPosition {
+  x: number
+  y: number
+  distance: number
+}
+
+const initialView = { scale: 1, x: 0, y: 0 }
+
+function getTouchPosition(touches: React.TouchList): TouchPosition | null {
+  if (!touches.length) return null
+  const first = touches[0]
+  const second = touches[1]
+  return second
+    ? {
+      x: (first.clientX + second.clientX) / 2,
+      y: (first.clientY + second.clientY) / 2,
+      distance: Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY),
+    }
+    : { x: first.clientX, y: first.clientY, distance: 0 }
+}
+
 export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
   const [idx, setIdx] = useState(startIdx)
-  
-  // 스와이프를 위한 터치 좌표 저장 (렌더링 최적화를 위해 useRef 사용)
-  const touchStartX = useRef<number | null>(null)
-  const touchEndX = useRef<number | null>(null)
+  const [view, setView] = useState(initialView)
+  const viewRef = useRef(initialView)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
+  const previousTouch = useRef<TouchPosition | null>(null)
+  const swipeStart = useRef<TouchPosition | null>(null)
+  const suppressSwipe = useRef(false)
+
+  const resetView = () => {
+    viewRef.current = initialView
+    setView(initialView)
+    previousTouch.current = null
+    swipeStart.current = null
+    suppressSwipe.current = false
+  }
+
+  useEffect(() => {
+    resetView()
+  }, [idx, photos[idx]])
+
+  useEffect(() => {
+    window.addEventListener('resize', resetView)
+    return () => window.removeEventListener('resize', resetView)
+  }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -23,34 +64,64 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [photos.length, onClose])
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchEndX.current = null // 터치 시작 시 초기화
-    touchStartX.current = e.targetTouches[0].clientX
+  const onTouchStart = (event: React.TouchEvent) => {
+    const position = getTouchPosition(event.touches)
+    if (!previousTouch.current) {
+      swipeStart.current = position
+      suppressSwipe.current = viewRef.current.scale > 1
+    }
+    if (event.touches.length > 1) suppressSwipe.current = true
+    previousTouch.current = position
   }
 
-  const onTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.targetTouches[0].clientX
+  const onTouchMove = (event: React.TouchEvent) => {
+    const current = getTouchPosition(event.touches)
+    const previous = previousTouch.current
+    const viewport = viewportRef.current
+    const image = imageRef.current
+    if (!current || !previous || !viewport || !image) return
+
+    const oldView = viewRef.current
+    const pinching = event.touches.length > 1
+    if (pinching) suppressSwipe.current = true
+    if (pinching || oldView.scale > 1) {
+      const scale = pinching && previous.distance > 0
+        ? Math.min(4, Math.max(1, oldView.scale * current.distance / previous.distance))
+        : oldView.scale
+      const ratio = scale / oldView.scale
+      const bounds = viewport.getBoundingClientRect()
+      const centerX = bounds.left + bounds.width / 2
+      const centerY = bounds.top + bounds.height / 2
+      const maxX = Math.max(0, (image.offsetWidth * scale - bounds.width) / 2)
+      const maxY = Math.max(0, (image.offsetHeight * scale - bounds.height) / 2)
+      const nextView = {
+        scale,
+        x: Math.max(-maxX, Math.min(maxX, current.x - centerX - (previous.x - centerX - oldView.x) * ratio)),
+        y: Math.max(-maxY, Math.min(maxY, current.y - centerY - (previous.y - centerY - oldView.y) * ratio)),
+      }
+      viewRef.current = nextView
+      setView(nextView)
+    }
+    previousTouch.current = current
   }
 
-  const onTouchEnd = () => {
-    if (touchStartX.current === null || touchEndX.current === null) return
-    
-    const distance = touchStartX.current - touchEndX.current
-    const minSwipeDistance = 50 // 스와이프 인식 최소 픽셀 거리
-
-    if (photos.length > 1) {
-      if (distance > minSwipeDistance) {
-        // 왼쪽으로 스와이프 (다음 사진)
-        setIdx((i) => (i + 1) % photos.length)
-      } else if (distance < -minSwipeDistance) {
-        // 오른쪽으로 스와이프 (이전 사진)
-        setIdx((i) => (i - 1 + photos.length) % photos.length)
+  const onTouchEnd = (event: React.TouchEvent) => {
+    if (event.touches.length) {
+      previousTouch.current = getTouchPosition(event.touches)
+      return
+    }
+    const start = swipeStart.current
+    const end = getTouchPosition(event.changedTouches)
+    if (!suppressSwipe.current && start && end && photos.length > 1) {
+      const distanceX = start.x - end.x
+      const distanceY = start.y - end.y
+      if (Math.abs(distanceX) > 50 && Math.abs(distanceX) > Math.abs(distanceY)) {
+        setIdx((currentIdx) => (currentIdx + (distanceX > 0 ? 1 : -1) + photos.length) % photos.length)
       }
     }
-
-    // 터치 종료 후 초기화
-    touchStartX.current = null
-    touchEndX.current = null
+    previousTouch.current = null
+    swipeStart.current = null
+    suppressSwipe.current = false
   }
 
   const navBtn: React.CSSProperties = {
@@ -61,18 +132,35 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
   return (
     <div
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
       style={{ 
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.93)', 
         zIndex: 200, display: 'flex', flexDirection: 'column', 
         alignItems: 'center', justifyContent: 'center', gap: 14,
-        touchAction: 'none' // 모바일 브라우저의 기본 스와이프 액션(새로고침, 뒤로가기 등) 방지
+        touchAction: 'none'
       }}
     >
-      <button onClick={onClose} style={{ position: 'absolute', top: 20, right: 24, background: 'none', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer' }}>×</button>
-      <img src={photos[idx]} style={{ maxWidth: '90vw', maxHeight: '72vh', borderRadius: 12, objectFit: 'contain' }} />
+      <button aria-label="사진 닫기" onClick={onClose} style={{ position: 'absolute', top: 20, right: 24, zIndex: 1, background: 'none', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer' }}>×</button>
+      <div
+        ref={viewportRef}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={() => {
+          previousTouch.current = null
+          swipeStart.current = null
+          suppressSwipe.current = false
+        }}
+        style={{ width: '90vw', height: '72vh', flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', userSelect: 'none' }}
+      >
+        <img
+          ref={imageRef}
+          src={photos[idx]}
+          alt={`사진 ${idx + 1}`}
+          draggable={false}
+          onLoad={resetView}
+          style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 12, objectFit: 'contain', transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
+        />
+      </div>
       {photos.length > 1 && (
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <button style={navBtn} onClick={() => setIdx((i) => (i - 1 + photos.length) % photos.length)}>‹</button>
