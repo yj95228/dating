@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useData } from '@/hooks/useData'
-import { useAuth } from '@/hooks/useAuth'
+import type { User } from '@supabase/supabase-js'
 
-export default function Layout() {
-  const { matches, canManage, loading, error } = useData()
-  const { user, signOut } = useAuth()
+export default function Layout({ user, onSignOut }: { user: User; onSignOut: () => unknown }) {
+  const { matches, canManage, loading, initialized, error } = useData()
   const location = useLocation()
   
   // 프로필 드롭다운 메뉴 상태 관리
@@ -19,13 +18,13 @@ export default function Layout() {
     ongoing: matches.filter((m) => m.result === '진행중').length,
   }
 
-  if (loading) return (
+  if (loading && !initialized) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5a5a80', fontSize: 14, fontFamily: "'Noto Sans KR', sans-serif" }}>
       불러오는 중...
     </div>
   )
 
-  if (error) return (
+  if (error && !initialized) return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20 }}>
       <div style={{ color: '#f87171', fontFamily: "'Noto Sans KR', sans-serif" }}>{error}</div>
       <div style={{ fontSize: 12, color: '#5a5a80', fontFamily: "'Noto Sans KR', sans-serif" }}>.env 파일에 Supabase 키가 설정되어 있는지 확인해주세요</div>
@@ -96,7 +95,7 @@ export default function Layout() {
                         <button 
                           onClick={() => {
                             setShowProfileMenu(false)
-                            signOut()
+                            onSignOut()
                           }} 
                           style={{ 
                             width: '100%', padding: '10px 0', borderRadius: 10,
@@ -138,6 +137,11 @@ export default function Layout() {
       </div>
 
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px 0' }}>
+        {error && (
+          <div role="status" style={{ marginBottom: 12, color: '#f87171', fontSize: 13 }}>
+            목록을 새로 불러오지 못했어요. 잠시 후 다시 시도해 주세요.
+          </div>
+        )}
         <Outlet />
       </div>
     </div>

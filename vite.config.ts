@@ -9,7 +9,8 @@ export default defineConfig({
     react(),
     basicSsl(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 작성 중인 PWA를 새 서비스워커가 즉시 인계하지 않도록 다음 실행까지 기다립니다.
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
         name: '소개팅 주선 노트',
@@ -40,6 +41,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: false,
+        clientsClaim: false,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

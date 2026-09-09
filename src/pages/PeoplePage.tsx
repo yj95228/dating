@@ -4,16 +4,20 @@ import { useData } from '@/hooks/useData'
 import Modal from '@/components/Modal'
 import PersonCard from '@/components/PersonCard'
 import PersonForm from '@/components/PersonForm'
+import { clearPersonDraft, readPersonDraft, writePersonDraft } from '@/lib/personDraft'
 import type { Person, PersonFormState, GenderFilter, PersonStatus } from '@/types'
 
 type StatusFilter = 'all' | 'active' | 'resting' | 'inactive'
 
-export default function PeoplePage() {
+export default function PeoplePage({ userId }: { userId: string }) {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { people, canManage, viewerGender, addPerson, updatePerson, updatePersonStatus, deletePerson } = useData()
   const [showFilter, setShowFilter] = useState(false)
-  const [formState, setFormState] = useState<{ open: boolean; person: Person | null }>({ open: false, person: null })
+  const [formState, setFormState] = useState<{ open: boolean; person: Person | null }>(() => ({
+    open: canManage && readPersonDraft(userId).open,
+    person: null,
+  }))
 
   const defaultGender: GenderFilter = !canManage && viewerGender === 'male'
     ? 'female'
@@ -52,14 +56,26 @@ export default function PeoplePage() {
     }, { replace: true })
   }
 
-  const openAdd = () => setFormState({ open: true, person: null })
-  const openEdit = (p: Person) => setFormState({ open: true, person: p })
-  const closeForm = () => setFormState({ open: false, person: null })
+  const openAdd = () => {
+    writePersonDraft(userId, { open: true })
+    setFormState({ open: true, person: null })
+  }
+  const openEdit = (p: Person) => {
+    writePersonDraft(userId, { open: false })
+    setFormState({ open: true, person: p })
+  }
+  const closeForm = () => {
+    if (!formState.person) writePersonDraft(userId, { open: false })
+    setFormState({ open: false, person: null })
+  }
 
   const handleSave = async (form: PersonFormState) => {
     if (formState.person) await updatePerson(formState.person.id, form)
-    else await addPerson(form)
-    closeForm()
+    else {
+      await addPerson(form)
+      clearPersonDraft(userId)
+    }
+    setFormState({ open: false, person: null })
   }
 
   const handleStatusChange = async (id: number, status: PersonStatus) => {
@@ -183,9 +199,11 @@ export default function PeoplePage() {
         ))
       )}
 
-      {formState.open && (
-        <Modal title={formState.person ? '인물 수정' : '인물 추가'} onClose={closeForm}>
-          <PersonForm initial={formState.person} onSave={handleSave} />
+      {canManage && formState.open && (
+        <Modal title={formState.person ? '인물 수정' : '인물 추가'} onClose={closeForm}
+          initialScrollTop={formState.person ? 0 : readPersonDraft(userId).scrollTop}
+          onScrollPositionChange={formState.person ? undefined : (scrollTop) => { writePersonDraft(userId, { scrollTop }) }}>
+          <PersonForm initial={formState.person} draftUserId={formState.person ? undefined : userId} onSave={handleSave} />
         </Modal>
       )}
     </>

@@ -10,7 +10,7 @@ import PersonDetail from '@/pages/PersonDetail'
 import MatchesPage from '@/pages/MatchesPage'
 
 function AuthGate() {
-  const { user, role, loading } = useAuth()
+  const { user, role, loading, signOut } = useAuth()
   const savedGender = user?.user_metadata?.gender
   const viewerGender = savedGender === 'male' || savedGender === 'female' ? savedGender : null
 
@@ -23,11 +23,11 @@ function AuthGate() {
   if (!user) return <LoginPage />
 
   return (
-    <DataProvider role={role} viewerGender={viewerGender}>
+    <DataProvider key={`${user.id}:${role}`} role={role} viewerGender={viewerGender}>
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route path="/" element={<Layout user={user} onSignOut={signOut} />}>
           <Route index element={<Navigate to="/people" replace />} />
-          <Route path="people" element={<PeoplePage />} />
+          <Route path="people" element={<PeoplePage userId={user.id} />} />
           <Route path="people/:id" element={<PersonDetail />} />
           <Route path="matches" element={<MatchesPage />} />
         </Route>

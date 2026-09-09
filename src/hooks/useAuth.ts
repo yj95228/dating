@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { clearPersonDraft } from '@/lib/personDraft'
 import type { User } from '@supabase/supabase-js'
 import type { UserRole } from '@/types'
 
@@ -17,47 +18,90 @@ export function useAuth() {
         const shouldSetPassword = type === 'invite' || type === 'recovery' || next === '/set-password'
         let redirectHandled = false
         let authSequence = 0
+        let disposed = false
+        let resolvedUserId: string | null = null
+        let resolvedRole: UserRole = 'viewer'
+        let redirectUserId: string | null = null
+        let roleTimer: ReturnType<typeof setTimeout> | undefined
 
         const needsPasswordSetup = (user: User) => {
             return shouldSetPassword || Boolean(user.invited_at && !user.user_metadata?.password_set)
         }
 
-        const applyUser = async (nextUser: User | null, shouldRedirect = false) => {
+        const applyUser = (nextUser: User | null, shouldRedirect = false) => {
+            if (disposed) return
             const sequence = ++authSequence
+            clearTimeout(roleTimer)
 
-            // 계정이 바뀌는 동안 이전 사용자의 관리자 화면/데이터가 남지 않게 막습니다.
-            setLoading(true)
-            setRole('viewer')
+            if (redirectUserId !== nextUser?.id) redirectUserId = null
+            if (shouldRedirect && nextUser) redirectUserId = nextUser.id
 
             if (!nextUser) {
+                if (resolvedUserId) clearPersonDraft(resolvedUserId)
+                resolvedUserId = null
+                resolvedRole = 'viewer'
+                setRole('viewer')
                 setUser(null)
                 setLoading(false)
                 return
             }
 
-            const { data, error } = await supabase.rpc('current_user_role')
-
-            if (sequence !== authSequence) return
-
-            if (error) {
-                console.error('Failed to load profile role:', error.message)
+            // 같은 계정의 갱신은 화면을 유지하고, 최초 로그인/계정 변경만 화면을 초기화합니다.
+            if (resolvedUserId !== nextUser.id) {
+                if (resolvedUserId) clearPersonDraft(resolvedUserId)
+                resolvedUserId = null
+                resolvedRole = 'viewer'
+                setLoading(true)
+                setRole('viewer')
+                setUser(null)
             }
 
-            setRole(data === 'admin' ? 'admin' : 'viewer')
-            setUser(nextUser)
-            setLoading(false)
+            // Auth 콜백 밖에서 권한을 조회하고, 새 인증 이벤트가 오면 이전 결과를 무시합니다.
+            roleTimer = setTimeout(() => {
+                if (disposed || sequence !== authSequence) return
+                void (async () => {
+                    // 일시적인 통신 실패는 권한 변경이 아닙니다. 같은 계정에서 마지막으로
+                    // 확인한 화면을 유지하며, 실제 데이터 접근 권한은 서버 RLS가 검사합니다.
+                    let nextRole = resolvedRole
+                    let roleConfirmed = false
+                    try {
+                        const { data, error } = await supabase.rpc('current_user_role')
+                        if (error) throw error
+                        nextRole = data === 'admin' ? 'admin' : 'viewer'
+                        roleConfirmed = true
+                    } catch {
+                        if (!disposed && sequence === authSequence) {
+                            console.error('Failed to refresh profile role; keeping the last confirmed permissions for this session.')
+                        }
+                    }
 
-            if (!redirectHandled && shouldRedirect) {
-                redirectHandled = true
-                window.location.href = '/set-password'
-            }
+                    if (disposed || sequence !== authSequence) return
+
+                    if (roleConfirmed && nextRole !== 'admin') clearPersonDraft(nextUser.id)
+
+                    resolvedUserId = nextUser.id
+                    resolvedRole = nextRole
+                    setRole(nextRole)
+                    setUser(nextUser)
+                    setLoading(false)
+
+                    if (!redirectHandled && redirectUserId === nextUser.id) {
+                        redirectHandled = true
+                        window.location.href = '/set-password'
+                    }
+                })()
+            }, 0)
         }
 
         supabase.auth.getSession().then(({ data: { session } }) => {
-            void applyUser(
+            // 초기 조회보다 나중에 수신한 인증 이벤트를 우선합니다.
+            if (disposed || authSequence !== 0) return
+            applyUser(
                 session?.user ?? null,
                 Boolean(session && needsPasswordSetup(session.user)),
             )
+        }).catch(() => {
+            if (!disposed && authSequence === 0) applyUser(null)
         })
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -65,14 +109,13 @@ export function useAuth() {
             const shouldRedirect = event === 'PASSWORD_RECOVERY'
                 || Boolean(isAuthLink && session && needsPasswordSetup(session.user))
 
-            // Auth 콜백 안에서 다른 Supabase 요청을 직접 기다리지 않습니다.
-            setTimeout(() => {
-                void applyUser(session?.user ?? null, shouldRedirect)
-            }, 0)
+            applyUser(session?.user ?? null, shouldRedirect)
         })
 
         return () => {
+            disposed = true
             authSequence += 1
+            clearTimeout(roleTimer)
             subscription.unsubscribe()
         }
     }, [])

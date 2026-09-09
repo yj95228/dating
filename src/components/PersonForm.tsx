@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import type { PersonFormState, PersonStatus } from '@/types'
+import { readPersonDraft, writePersonDraft } from '@/lib/personDraft'
 
 interface PersonFormProps {
   initial?: PersonFormState | null
-  onSave: (form: PersonFormState) => void
+  onSave: (form: PersonFormState) => Promise<void>
+  draftUserId?: string
 }
-
-const DRAFT_KEY = 'person_form_draft'
 
 const defaultForm = (): PersonFormState => ({
   name: null, year: null, location: null, job: null, height: null,
@@ -67,35 +67,42 @@ const STATUS_STYLE: Record<string, { border: string; bg: string; color: string }
 }
 
 const field = (label: string, children: React.ReactNode) => (
-  <div style={{ marginBottom: 16 }}>
+  <div key={label} style={{ marginBottom: 16 }}>
     <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 6, fontWeight: 600 }}>{label}</div>
     {children}
   </div>
 )
 
-export default function PersonForm({ initial, onSave }: PersonFormProps) {
+export default function PersonForm({ initial, onSave, draftUserId }: PersonFormProps) {
   const [form, setForm] = useState<PersonFormState>(() => {
-    // 수정 모드면 draft 무시
     if (initial) return initial
-    // 저장된 draft 있으면 복원
-    try {
-      const saved = sessionStorage.getItem(DRAFT_KEY)
-      if (saved) return JSON.parse(saved)
-    } catch { }
+    if (draftUserId) return readPersonDraft(draftUserId).form ?? defaultForm()
     return defaultForm()
   })
 
-  // form 바뀔 때마다 draft 저장 (수정 모드 제외)
+  const [draftUnavailable, setDraftUnavailable] = useState(false)
   useEffect(() => {
-    if (!initial) {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form))
+    if (draftUserId) {
+      setDraftUnavailable(!writePersonDraft(draftUserId, { form }))
     }
-  }, [form, initial])
+  }, [form, draftUserId])
 
-  // 저장 완료 시 draft 삭제
-  const handleSave = () => {
-    sessionStorage.removeItem(DRAFT_KEY)
-    onSave(form)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const saveInFlight = useRef(false)
+  const handleSave = async () => {
+    if (saveInFlight.current || uploading) return
+    saveInFlight.current = true
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(form)
+    } catch {
+      setSaveError('저장하지 못했어요. 입력 내용은 유지됩니다. 다시 시도해 주세요.')
+    } finally {
+      saveInFlight.current = false
+      setSaving(false)
+    }
   }
   const [uploading, setUploading] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
@@ -226,9 +233,11 @@ export default function PersonForm({ initial, onSave }: PersonFormProps) {
           className="input-field" style={{ minHeight: 72, resize: 'vertical' }} />
       )}
 
-      <button onClick={handleSave} disabled={uploading}
-        className="btn-primary" style={{ width: '100%', padding: '14px 0', fontSize: 15, marginTop: 8, opacity: uploading ? 0.5 : 1 }}>
-        {uploading ? '업로드 중...' : '저장'}
+      {draftUnavailable && <div role="status" style={{ color: '#fbbf24', fontSize: 12, marginTop: 8 }}>기기 임시 저장을 사용할 수 없어요. 앱을 닫기 전에 저장해 주세요.</div>}
+      {saveError && <div role="alert" style={{ color: '#f87171', fontSize: 13, marginTop: 8 }}>{saveError}</div>}
+      <button onClick={handleSave} disabled={uploading || saving}
+        className="btn-primary" style={{ width: '100%', padding: '14px 0', fontSize: 15, marginTop: 8, opacity: uploading || saving ? 0.5 : 1 }}>
+        {saving ? '저장 중...' : uploading ? '업로드 중...' : '저장'}
       </button>
     </div>
   )

@@ -6,6 +6,7 @@ interface DataContextValue {
   people: Person[]
   matches: Match[]
   loading: boolean
+  initialized: boolean
   error: string | null
   role: UserRole
   viewerGender: Gender | null
@@ -37,6 +38,7 @@ function useDataInternal(role: UserRole, viewerGender: Gender | null): DataConte
   const [people, setPeople] = useState<Person[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const canManage = role === 'admin'
 
@@ -63,6 +65,7 @@ function useDataInternal(role: UserRole, viewerGender: Gender | null): DataConte
         photos: canManage && 'photos' in person && Array.isArray(person.photos) ? person.photos : [],
       })) as Person[])
       setMatches(m ?? [])
+      setInitialized(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : '데이터를 불러오지 못했어요')
     } finally {
@@ -128,7 +131,7 @@ function useDataInternal(role: UserRole, viewerGender: Gender | null): DataConte
   }
 
   return {
-    people, matches, loading, error, role, viewerGender, canManage, refetch: fetchAll,
+    people, matches, loading, initialized, error, role, viewerGender, canManage, refetch: fetchAll,
     addPerson, updatePerson, deletePerson, updatePersonStatus,
     addMatch, updateMatchResult, deleteMatch,
   }
