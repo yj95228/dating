@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useData } from '@/hooks/useData'
+import InviteModal from '@/components/InviteModal'
+import { S } from '@/styles'
 import type { User } from '@supabase/supabase-js'
 
 export default function Layout({ user, onSignOut }: { user: User; onSignOut: () => unknown }) {
@@ -9,6 +11,7 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
   
   // 프로필 드롭다운 메뉴 상태 관리
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
 
   const isDetail = location.pathname.startsWith('/people/') && location.pathname !== '/people'
 
@@ -92,6 +95,12 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
                         <div style={{ fontSize: 13, color: '#e0d0ff', marginBottom: 16, wordBreak: 'break-all', fontWeight: 500 }}>
                           {user.email}
                         </div>
+                        {canManage && (
+                          <button type="button" style={{ ...S.btnPrimary, width: '100%', marginBottom: 10 }}
+                            onClick={() => { setShowProfileMenu(false); setShowInvite(true) }}>
+                            사용자 초대
+                          </button>
+                        )}
                         <button 
                           onClick={() => {
                             setShowProfileMenu(false)
@@ -144,6 +153,7 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
         )}
         <Outlet />
       </div>
+      {canManage && showInvite && <InviteModal onClose={() => setShowInvite(false)} />}
     </div>
   )
 }

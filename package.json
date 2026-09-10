@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:auth": "node --test scripts/use-auth.test.mjs",
     "test:app": "node --test scripts/app-lifecycle.test.mjs",
+    "test:invite": "node --test scripts/create-invite.test.mjs scripts/invite-ui.test.mjs",
+    "typecheck:edge": "npx --yes --package deno deno check --no-lock --node-modules-dir=none supabase/functions/create-invite/index.ts",
     "docs:check": "node scripts/check-env-example.mjs",
     "supabase:status": "supabase status",
     "supabase:migrations": "supabase migration list"

@@ -1,0 +1,4 @@
+[functions.create-invite]
+# The handler validates the user JWT with Auth and checks the current DB role.
+# This also supports projects using asymmetric JWT signing keys.
+verify_jwt = false

@@ -19,6 +19,7 @@
 
 - Supabase 이메일/비밀번호 로그인
 - 초대/비밀번호 재설정 링크 진입 시 `/set-password`에서 비밀번호와 성별 설정
+- 관리자 프로필 메뉴의 **사용자 초대**에서 이메일로 초대 링크를 생성·복사하고 카톡 등으로 직접 전달합니다. 초대받은 사람은 `viewer`로 등록됩니다.
 - `admin` / `viewer` 역할 기반 권한 분리
 - 인물 등록/수정/상태 변경/삭제
 - 인물 추가·수정 중 다른 앱이나 브라우저 탭에 다녀와도, 같은 계정과 권한이 유지되면 작성 창·입력 내용·창 안의 스크롤·진행 중인 사진 업로드 상태가 유지됩니다. 로그아웃·계정 전환·권한 변경 시에는 화면을 초기화합니다.
@@ -60,6 +61,7 @@ src/
 │   ├── Avatar.tsx
 │   ├── ConfirmDialog.tsx
 │   ├── Lightbox.tsx
+│   ├── InviteModal.tsx     # 관리자용 초대 링크 생성·복사
 │   ├── MatchCard.tsx
 │   ├── Modal.tsx
 │   ├── PersonCard.tsx
@@ -75,6 +77,8 @@ src/
 └── types/index.ts          # 공통 타입 정의
 
 supabase/
+├── config.toml            # Edge Function 인증 설정
+├── functions/create-invite/ # 토큰·관리자 권한 확인 후 초대 링크 생성
 ├── role_policies.sql       # SQL Editor에서 참고/실행하기 쉬운 RLS 정책 파일
 └── migrations/             # DB 변경 이력으로 보관하는 SQL migration
 ```
@@ -122,6 +126,8 @@ npm run dev -- --host 0.0.0.0
 npm run typecheck           # TypeScript 타입 검사
 npm run test:auth           # 인증 갱신·계정 전환·비동기 경합 회귀 검사 (모의 이벤트, 실제 UI 검사 제외)
 npm run test:app            # 실제 React 폼의 인증/목록 재조회 유지·PWA 재시작 복원 검사 (브라우저 DOM 제외)
+npm run test:invite         # 초대 서버 권한·오류와 실제 React 초대/콜백 화면 검사 (외부 서비스 모의 응답)
+npm run typecheck:edge      # Deno로 Edge Function 타입 검사 (첫 실행 시 npx가 Deno 다운로드)
 npm run build               # 프로덕션 빌드
 npm run preview             # 빌드 결과 로컬 미리보기
 npm run docs:check          # src에서 쓰는 VITE_* env가 .env.example에 있는지 확인
@@ -153,6 +159,73 @@ SQL Editor로 수동 실행해야 할 때는 `supabase/role_policies.sql`을 참
 
 적용 후에는 비로그인 사용자가 `people_public`을 읽지 못하는지, `viewer`는 이름과 사진을
 제외한 정보만 보는지, `admin`은 인물과 매칭을 관리할 수 있는지 각각 확인합니다.
+
+## 앱에서 사용자 초대
+
+1. 관리자로 로그인하고 오른쪽 위 프로필 버튼 → **사용자 초대**를 누릅니다.
+2. 상대 이메일을 입력하고 **초대 링크 만들기**를 누릅니다. 메일은 발송하지 않습니다.
+3. **링크 복사** 후 카톡 등으로 해당 상대에게 직접 전달합니다. 자동 복사가 차단되면 화면의 링크를 선택해 직접 복사합니다.
+4. 상대가 링크를 열고 비밀번호·성별 설정을 마치면 `viewer`로 이용할 수 있습니다.
+
+초대 링크를 가진 사람은 그 계정에 접속할 수 있으므로 입력한 이메일의 당사자에게만 전달합니다.
+링크와 입력값은 모달 메모리에만 보관하며, 창을 닫거나 로그아웃·계정 전환·권한 변경으로
+모달이 해제되면 지웁니다. 앱 저장소나 함수 로그에는 링크·토큰을 남기지 않으며 함수 응답은
+`Cache-Control: no-store`로 반환합니다. 복사한 클립보드나 이미 전달한 메시지는 지워지지 않습니다.
+
+아직 수락하지 않은 초대는 같은 이메일로 링크를 다시 만들 수 있습니다. 가장 최근 링크를 전달하세요.
+유효기간은 Supabase Auth의 Email OTP Expiration 설정을 따릅니다. 만료·사용된 링크는
+재초대 안내를 보여줍니다. 이미 링크를 수락해 이메일이 확인된 계정은 재초대하지 않으며,
+로그인·비밀번호 재설정 링크를 대신 발급하지 않습니다. 비밀번호 설정을 중단했다면
+링크를 수락했던 브라우저의 세션에서 설정을 마칩니다.
+
+이번 기능은 `viewer` 초대만 지원합니다. 관리자 초대, 이메일 발송, 초대 이력·취소는 포함하지 않습니다.
+
+### 초대 함수 초기 배포
+
+기존 Vercel 프런트엔드 배포와 별도로 Supabase Edge Function을 한 번 배포해야 합니다.
+Supabase CLI에 로그인한 뒤 아래 명령의 `<project-ref>`와 예시 앱 주소를 실제 배포 대상으로 바꿉니다.
+
+```bash
+npx supabase login
+npx supabase secrets set APP_URL=https://dating-note.vercel.app --project-ref <project-ref>
+npx supabase functions deploy create-invite --project-ref <project-ref>
+```
+
+| 서버 설정 | 용도 |
+|---|---|
+| `APP_URL` | 앱의 origin만 지정합니다(예: `https://dating-note.vercel.app`). 경로·쿼리·해시는 넣지 않습니다. |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase 호스팅 함수에 기본 제공되며 호출자 토큰과 DB 역할을 확인합니다. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 호스팅 함수에 기본 제공되는 서버 전용 키로 초대 링크를 생성합니다. |
+
+서버 전용 키는 `VITE_*` 변수나 프런트엔드에 넣지 않습니다. 이 기능에는 새 프런트엔드 환경변수가
+필요하지 않으며 `.env`도 수정하지 않습니다. `APP_URL`은 Supabase 함수의 설정입니다.
+
+Supabase **Authentication → URL Configuration**에서 Site URL을 앱 주소로 설정하고,
+Redirect URLs에 `https://your-app.vercel.app/auth/callback?next=/set-password`를 등록합니다.
+함수는 이 주소를 고정해서 사용하며 요청에서 받은 redirect나 역할은 사용하지 않습니다.
+SMTP 설정은 필요 없습니다. 비공개 초대 운영 시에는 Auth의 공개 신규 가입 허용을 꺼 둡니다.
+관리자 API를 통한 초대는 별도로 사용할 수 있습니다.
+
+`supabase/config.toml`의 `verify_jwt = false`는 게이트웨이의 기존 JWT 검사를 사용하지 않는다는 뜻입니다.
+함수 본문에서 반드시 `auth.getUser(token)`으로 실제 사용자 토큰을 검증하고,
+호출자 JWT로 `current_user_role()`을 조회해 `admin`일 때만 서버용 클라이언트를 만듭니다.
+따라서 비로그인·viewer·프로필 누락·권한 조회 실패는 초대 API에 도달하지 않습니다.
+CORS는 `APP_URL` origin만 허용합니다. 로컬 개발은 별도의 로컬/테스트 함수에 해당 origin을 설정합니다.
+
+DB 변경은 없습니다. 신규 사용자를 `viewer`로 만드는 기존
+`20260726000000_harden_role_access.sql`의 트리거와 RLS 적용이 전제입니다.
+함수 인터페이스는 `POST /functions/v1/create-invite`, 사용자 Bearer 토큰, JSON `{ "email": "..." }`이며,
+성공하면 `{ "inviteUrl": "..." }`, 실패하면 HTTP 오류 상태와 `{ "code": "...", "message": "..." }`를 반환합니다.
+
+### 배포 후 검증
+
+- 테스트용 관리자 계정으로 링크를 생성하고 새 브라우저에서 수락 → 비밀번호·성별 설정 → viewer 접근을 확인합니다. 이름·사진·매칭 관리 권한이 생기지 않아야 합니다.
+- 미수락 테스트 계정은 같은 이메일로 재생성할 수 있고, 수락한 계정은 `409 already_registered`로 거절되는지 확인합니다. 사용된 링크와 만료된 링크는 새 링크 요청 안내를 보여야 합니다.
+- 토큰 없는 요청과 만료 토큰은 401, viewer의 직접 호출은 403으로 차단되는지 확인합니다. 기존 관리자라도 DB 역할이 viewer로 바뀌면 발급할 수 없어야 합니다.
+- 모바일에서 복사·수동 복사와 모달 닫기 후 링크 제거를 확인합니다. 생성 실패 시 함수 배포 상태, `APP_URL`, Auth redirect 등록을 점검하며 로그에 토큰·응답 본문을 추가하지 않습니다.
+
+자동 테스트는 SDK의 네트워크 응답과 브라우저 API를 모의 처리하므로 실제 Supabase 프로젝트의
+트리거·토큰 만료·redirect 설정이나 실제 브라우저 클립보드까지 검증하지는 않습니다.
 
 ## 배포
 
