@@ -8,18 +8,20 @@ import { createClient } from '@supabase/supabase-js'
 const source = ts.transpileModule(readFileSync(new URL('../supabase/functions/create-invite/handler.ts', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText
-const context = { exports: {}, URL, Headers, Response }
+const context = { exports: {}, URL, URLSearchParams, Headers, Response }
 vm.runInNewContext(source, context)
 const { createInviteHandler } = context.exports
 const appUrl = 'https://app.example.test'
 const supabaseUrl = 'https://auth.example.test'
-const inviteUrl = `${supabaseUrl}/auth/v1/verify?token=test-only&type=invite`
+const inviteUrl = `${appUrl}/auth/invite#token_hash=test-only-hash&type=invite`
 
 // Exercise the real SDK adapter and handler against mocked Auth/PostgREST HTTP.
 // No real accounts, tokens, emails or database writes are used.
 function harness({ role = 'admin', authStatus = 200, roleStatus = 200, generateStatus = 200,
-  generateCode = '', throwRole = false, configuredAppUrl = appUrl, missingLink = false } = {}) {
+  generateCode = '', throwRole = false, configuredAppUrl = appUrl, missingLink = false,
+  incompleteId = null, eligibilityStatus = 200, recheckId = incompleteId, recoveryId = 'invitee', recoveryStatus = 200 } = {}) {
   const calls = [], clients = []
+  let eligibilityCalls = 0
   const fetch = async (input, init) => {
     const url = new URL(input)
     calls.push({ pathname: url.pathname, redirectTo: url.searchParams.get('redirect_to'), body: init.body ? JSON.parse(init.body) : null, headers: new Headers(init.headers) })
@@ -32,9 +34,18 @@ function harness({ role = 'admin', authStatus = 200, roleStatus = 200, generateS
       if (throwRole) throw new Error('network unavailable')
       return json(roleStatus === 200 ? role : { message: 'private upstream details' }, roleStatus)
     }
+    if (url.pathname === '/rest/v1/rpc/incomplete_invited_viewer_id') {
+      eligibilityCalls++
+      return json(eligibilityStatus === 200 ? (eligibilityCalls === 1 ? incompleteId : recheckId)
+        : { message: 'missing migration' }, eligibilityStatus)
+    }
     assert.equal(url.pathname, '/auth/v1/admin/generate_link')
+    if (JSON.parse(init.body).type === 'recovery') {
+      return json(recoveryStatus === 200 ? { hashed_token: 'setup-only-hash', verification_type: 'recovery', id: recoveryId }
+        : { code: 'unexpected_failure', message: 'private upstream details' }, recoveryStatus)
+    }
     return json(generateStatus === 200
-      ? { action_link: missingLink ? undefined : inviteUrl, email_otp: 'never-return-this', hashed_token: 'never-return-this', verification_type: 'invite', id: 'invitee' }
+      ? { action_link: `${supabaseUrl}/auth/v1/verify?token=unused&type=invite`, email_otp: 'never-return-this', hashed_token: missingLink ? undefined : 'test-only-hash', verification_type: 'invite', id: 'invitee' }
       : { code: generateCode, message: 'private upstream details' }, generateStatus)
   }
   const handler = createInviteHandler({ supabaseUrl, anonKey: 'test-anon', serviceRoleKey: 'test-service', appUrl: configuredAppUrl },
@@ -65,6 +76,37 @@ test('admin creates an invite with a fixed redirect and returns only the link', 
   assert.equal(h.calls[2].redirectTo, `${appUrl}/auth/callback?next=/set-password`)
   assert.equal(h.calls[2].headers.get('authorization'), 'Bearer test-service')
 })
+
+test('accepted invite without a password gets a setup link only after both server eligibility checks', async () => {
+  const h = harness({ generateStatus: 422, generateCode: 'email_exists', incompleteId: 'invitee' })
+  const response = await h.request()
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { inviteUrl: `${appUrl}/auth/invite#token_hash=setup-only-hash&type=recovery` })
+  const checks = h.calls.filter((call) => call.pathname.endsWith('incomplete_invited_viewer_id'))
+  assert.equal(checks.length, 2)
+  assert.ok(checks.every((call) => call.headers.get('authorization') === 'Bearer test-service'))
+  assert.deepEqual(checks[0].body, { p_email: 'guest@example.test' })
+  assert.deepEqual(h.calls.filter((call) => call.pathname.endsWith('generate_link')).map((call) => call.body.type), ['invite', 'recovery'])
+})
+
+for (const [label, settings, status] of [
+  ['missing migration', { eligibilityStatus: 404 }, 503],
+  ['DB eligibility failure', { eligibilityStatus: 500 }, 503],
+  ['completed/admin/non-invited account', { incompleteId: null }, 409],
+  ['password set while generating', { incompleteId: 'invitee', recheckId: null }, 409],
+  ['wrong recovered identity', { incompleteId: 'invitee', recoveryId: 'different-user' }, 502],
+  ['Auth recovery failed', { incompleteId: 'invitee', recoveryStatus: 500 }, 502],
+]) {
+  test(`setup link is withheld for ${label}`, async () => {
+    const h = harness({ generateStatus: 422, generateCode: 'email_exists', ...settings })
+    const response = await h.request()
+    assert.equal(response.status, status)
+    assert.equal((await response.json()).inviteUrl, undefined)
+    if (!settings.incompleteId) {
+      assert.equal(h.calls.filter((call) => call.pathname.endsWith('generate_link')).length, 1)
+    }
+  })
+}
 
 test('pending invitation retries keep the invite type and never request login or recovery', async () => {
   const h = harness()

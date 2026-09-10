@@ -80,10 +80,34 @@ export function createInviteHandler(config: InviteConfig, createClient: typeof C
       const { data, error } = await admin.auth.admin.generateLink({
         type: 'invite', email, options: { redirectTo },
       })
-      // Supabase reissues pending invites and rejects already confirmed accounts.
-      // Do not fall back to magiclink/recovery, which would grant account access.
+      const setupUrl = (tokenHash: string, type: 'invite' | 'recovery') => {
+        const url = new URL('/auth/invite', appUrl.origin)
+        url.hash = new URLSearchParams({ token_hash: tokenHash, type }).toString()
+        return url.href
+      }
+      // Confirmed accounts are only recoverable when a server-only DB query
+      // proves they are invited viewers who have not set their own password.
+      // Auth's temporary password on initial acceptance does not count.
       if (error) {
         if (error.code === 'email_exists' || error.code === 'user_already_exists') {
+          const { data: incompleteId, error: eligibilityError } = await admin.rpc('incomplete_invited_viewer_id', { p_email: email })
+          if (eligibilityError) {
+            return failure(503, 'setup_check_failed', '초대 계정의 설정 상태를 확인하지 못했어요. 관리자에게 문의해 주세요.')
+          }
+          if (typeof incompleteId === 'string' && incompleteId) {
+            const { data: setup, error: setupError } = await admin.auth.admin.generateLink({
+              type: 'recovery', email, options: { redirectTo },
+            })
+            if (setupError || !setup.properties?.hashed_token || setup.user?.id !== incompleteId) {
+              return failure(502, 'invite_failed', '설정 링크를 만들지 못했어요. 잠시 후 다시 시도해 주세요.')
+            }
+            // Recheck in case a password or role changed while Auth issued a token.
+            const { data: stillIncomplete, error: recheckError } = await admin.rpc('incomplete_invited_viewer_id', { p_email: email })
+            if (recheckError || stillIncomplete !== incompleteId) {
+              return failure(409, 'already_registered', '계정 상태가 바뀌었어요. 이미 설정을 마쳤다면 기존 계정으로 로그인해 주세요.')
+            }
+            return reply(200, { inviteUrl: setupUrl(setup.properties.hashed_token, 'recovery') })
+          }
           return failure(409, 'already_registered', '이미 가입된 사용자예요. 기존 계정으로 로그인해 주세요.')
         }
         if (error.code === 'email_address_invalid' || error.code === 'validation_failed') {
@@ -94,8 +118,10 @@ export function createInviteHandler(config: InviteConfig, createClient: typeof C
         }
         return failure(502, 'invite_failed', '초대 링크를 만들지 못했어요. 잠시 후 다시 시도해 주세요.')
       }
-      if (!data.properties?.action_link) throw new Error('Missing invite link')
-      return reply(200, { inviteUrl: data.properties.action_link })
+      if (!data.properties?.hashed_token) throw new Error('Missing invite token')
+      // Do not expose Auth's GET /verify link: previews can consume it before
+      // the recipient opens it. Only an explicit button click exchanges this hash.
+      return reply(200, { inviteUrl: setupUrl(data.properties.hashed_token, 'invite') })
     } catch {
       // Upstream errors can contain email addresses, tokens or service credentials.
       return failure(500, 'invite_failed', '초대 기능을 사용할 수 없어요. 잠시 후 다시 시도해 주세요.')

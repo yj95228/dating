@@ -19,13 +19,18 @@ const deferred = () => {
 
 function harness({ href = 'https://app.example.test/auth/callback', canManage = true,
   invoke = async () => ({ data: { inviteUrl }, error: null }), session = null, exchangeError = null,
-  sessionError = false, clipboardFails = false } = {}) {
+  sessionError = false, clipboardFails = false, verifyError = null, verifyResult } = {}) {
   const cache = new Map(), timers = new Map(), navigations = [], copies = [], requests = []
   const listeners = new Set()
+  const verifications = []
   let selected = 0, renderer, timerId = 0, identityReads = 0, rewrittenUrl
   const supabase = {
     functions: { invoke: async (...args) => { requests.push(args); return invoke(...args) } },
     auth: {
+      verifyOtp: async (params) => {
+        verifications.push(params)
+        return verifyResult ?? { data: { session }, error: verifyError }
+      },
       getSession: async () => {
         identityReads++
         if (sessionError) throw new Error('offline')
@@ -84,7 +89,7 @@ function harness({ href = 'https://app.example.test/auth/callback', canManage = 
     await act(async () => { await action(); await new Promise((resolve) => setImmediate(resolve)) })
   }
   return {
-    flush, requests, navigations, copies,
+    flush, requests, navigations, copies, verifications,
     async mount(file = 'components/InviteModal.tsx', props = {}) {
       const Component = load(path.join(src, file)).default
       await flush(() => {
@@ -108,6 +113,64 @@ function harness({ href = 'https://app.example.test/auth/callback', canManage = 
     async cleanup() { await flush(() => renderer.unmount()) },
   }
 }
+
+test('invitation landing and preview do not consume tokens or reuse an existing session', async () => {
+  const h = harness({ href: 'https://app.example.test/auth/invite#token_hash=test-only', session: { user: { id: 'already-signed-in' } } })
+  await h.mount('pages/AcceptInvitePage.tsx')
+  await h.timers()
+  assert.equal(h.verifications.length, 0)
+  assert.equal(h.identityReads, 0)
+  assert.equal(h.navigations.length, 0)
+  assert.ok(h.button('초대 수락'))
+  await h.cleanup()
+  await h.mount('pages/AcceptInvitePage.tsx')
+  assert.equal(h.verifications.length, 0, 'remount/StrictMode must not exchange a token')
+  await h.cleanup()
+})
+
+test('explicit acceptance waits for the new session then opens password setup and scrubs the hash', async () => {
+  const pending = deferred()
+  const h = harness({ href: 'https://app.example.test/auth/invite#token_hash=test-only', verifyResult: pending.promise })
+  await h.mount('pages/AcceptInvitePage.tsx')
+  const accept = h.button('초대 수락').props.onClick
+  await h.flush(() => { void accept(); void accept() })
+  assert.equal(h.verifications.length, 1)
+  assert.equal(h.verifications[0].type, 'invite')
+  assert.equal(h.verifications[0].token_hash, 'test-only')
+  assert.equal(h.navigations.length, 0)
+  await h.flush(() => pending.resolve({ data: { session: { user: { id: 'invitee' } } }, error: null }))
+  assert.equal(h.navigations[0][0], '/set-password')
+  assert.equal(h.rewrittenUrl, '/auth/invite')
+  await h.cleanup()
+})
+
+test('a consumed invitation cannot use a pre-existing session to open password setup', async () => {
+  const h = harness({ href: 'https://app.example.test/auth/invite#token_hash=used', session: { user: { id: 'existing' } }, verifyError: { code: 'otp_expired' } })
+  await h.mount('pages/AcceptInvitePage.tsx')
+  await h.flush(() => h.button('초대 수락').props.onClick())
+  assert.equal(h.navigations.length, 0)
+  assert.match(h.text, /이미 수락/)
+  await h.cleanup()
+})
+
+test('landing without the complete invite hash provides instructions and never verifies', async () => {
+  const h = harness({ href: 'https://app.example.test/auth/invite' })
+  await h.mount('pages/AcceptInvitePage.tsx')
+  assert.match(h.text, /초대 링크 전체/)
+  assert.equal(h.verifications.length, 0)
+  assert.equal(h.navigations.length, 0)
+  await h.cleanup()
+})
+
+test('an eligible setup link requires an explicit click before recovery verification', async () => {
+  const h = harness({ href: 'https://app.example.test/auth/invite#token_hash=setup-only&type=recovery', session: { user: { id: 'invitee' } } })
+  await h.mount('pages/AcceptInvitePage.tsx')
+  assert.equal(h.verifications.length, 0)
+  await h.flush(() => h.button('설정 이어가기').props.onClick())
+  assert.equal(h.verifications[0].type, 'recovery')
+  assert.equal(h.navigations[0][0], '/set-password')
+  await h.cleanup()
+})
 
 test('create/copy normalizes email, clears stale links on edit and forgets links after close', async () => {
   const h = harness()

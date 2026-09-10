@@ -8,6 +8,7 @@ const errorMessages: Record<string, string> = {
   unauthorized: '로그인이 만료되었어요. 다시 로그인해 주세요.',
   forbidden: '관리자만 사용자를 초대할 수 있어요.',
   role_check_failed: '권한을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.',
+  setup_check_failed: '초대 계정의 설정 상태를 확인하지 못했어요. 관리자에게 문의해 주세요.',
   already_registered: '이미 가입된 사용자예요. 기존 계정으로 로그인해 주세요.',
   rate_limited: '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.',
 }
@@ -109,6 +110,8 @@ export default function InviteModal({ onClose }: { onClose: () => void }) {
           <button type="button" onClick={copyLink} style={{ ...S.btnPrimary, width: '100%', marginTop: 8 }}>링크 복사</button>
           <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
             이 링크로 해당 계정에 접속할 수 있으니 {email}의 당사자에게만 전달해 주세요.
+            상대가 링크에서 ‘초대 수락’을 누르면 비밀번호·성별을 설정할 수 있어요.
+            이미 수락했지만 비밀번호를 설정하지 않은 초대 계정에는 ‘설정 이어가기’ 링크가 만들어져요.
             링크가 만료되면 같은 이메일로 다시 만들어 주세요. 창을 닫으면 링크가 화면에서 지워져요.
           </p>
         </div>

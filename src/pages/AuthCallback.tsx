@@ -118,6 +118,7 @@ export default function AuthCallback() {
         <p role="alert" style={{ color: '#a9a3c9', fontSize: 14, lineHeight: 1.8 }}>
           링크가 만료되었거나 이미 사용되었을 수 있어요.
           초대받은 경우 관리자에게 새 초대 링크를 요청해 주세요.
+          초대를 수락했지만 비밀번호를 설정하지 못한 경우에도 관리자에게 설정 링크 재발급을 요청할 수 있어요.
           이미 가입했다면 기존 계정으로 로그인해 주세요.
         </p>
         <Link to="/login" style={{ ...S.btnPrimary, display: 'inline-block', textDecoration: 'none' }}>로그인으로 이동</Link>

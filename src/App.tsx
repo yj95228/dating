@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { DataProvider } from '@/hooks/useData'
 import { useAuth } from '@/hooks/useAuth'
 import AuthCallback from './pages/AuthCallback'
+import AcceptInvitePage from './pages/AcceptInvitePage'
 import SetPasswordPage from './pages/SetPasswordPage'
 import Layout from '@/pages/Layout'
 import LoginPage from '@/pages/LoginPage'
@@ -42,6 +43,7 @@ export default function App() {
       <Routes>
         {/* AuthGate 밖 - 인증 처리 페이지 */}
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/auth/invite" element={<AcceptInvitePage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
 
         {/* AuthGate 안 - 로그인 필요 */}
