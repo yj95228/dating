@@ -31,7 +31,7 @@ export default function AcceptInvitePage() {
       })
       if (!mounted.current) return
       if (authError || !data.session) {
-        setError('초대를 확인하지 못했어요. 링크가 만료되었거나 이미 수락되었을 수 있어요. 관리자에게 확인해 주세요.')
+        setError('초대를 확인하지 못했어요. 링크가 만료되었거나 이미 사용되었을 수 있어요. 비밀번호 설정을 마쳤다면 아래 로그인으로 이동을 눌러 주세요. 설정을 마치지 못했다면 관리자에게 새 링크를 요청해 주세요.')
         return
       }
       setTokenHash('')

@@ -149,7 +149,9 @@ test('a consumed invitation cannot use a pre-existing session to open password s
   await h.mount('pages/AcceptInvitePage.tsx')
   await h.flush(() => h.button('초대 수락').props.onClick())
   assert.equal(h.navigations.length, 0)
-  assert.match(h.text, /이미 수락/)
+  assert.match(h.text, /이미 사용/)
+  assert.match(h.text, /설정을 마쳤다면 아래 로그인으로 이동/)
+  assert.match(h.text, /설정을 마치지 못했다면 관리자에게 새 링크/)
   await h.cleanup()
 })
 

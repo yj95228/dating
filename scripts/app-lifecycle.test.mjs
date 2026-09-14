@@ -18,7 +18,7 @@ const deferred = () => {
 
 // Render the real App, data provider, Layout, PeoplePage and PersonForm together.
 // Only external services, the browser location/storage and host DOM are replaced.
-async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRole = 'admin', legacyStorage = new Map() } = {}) {
+async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRole = 'admin', legacyStorage = new Map(), initialPath = '/people', signedIn = true } = {}) {
   const account = { id: accountId, email: 'test@example.test', user_metadata: {} }
   const listeners = new Set()
   const cache = new Map()
@@ -28,7 +28,7 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
   let role = initialRole, roleError = false, holdData = false, saveError = false, timerId = 0, data
   const supabase = {
     auth: {
-      getSession: async () => ({ data: { session: { user: account } } }),
+      getSession: async () => ({ data: { session: signedIn ? { user: account } : null } }),
       onAuthStateChange: (listener) => {
         listeners.add(listener)
         return { data: { subscription: { unsubscribe: () => listeners.delete(listener) } } }
@@ -52,7 +52,7 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
   }
   const context = vm.createContext({
     URL, URLSearchParams, React,
-    window: { location: { href: 'https://example.test/people' } },
+    window: { location: { href: `https://example.test${initialPath}` } },
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -82,7 +82,7 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
       if (name === 'react-router-dom') return {
         ...Router,
         BrowserRouter: ({ children }) => React.createElement(Router.MemoryRouter, {
-          initialEntries: ['/people'], future: { v7_startTransition: true, v7_relativeSplatPath: true },
+          initialEntries: [initialPath], future: { v7_startTransition: true, v7_relativeSplatPath: true },
         }, children),
       }
       if (name === '@/lib/supabase') return { supabase }
@@ -160,6 +160,7 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
     get name() { return findName().props.value },
     get draftWarning() { return JSON.stringify(renderer.toJSON()).includes('기기 임시 저장을 사용할 수 없어요') },
     get isLoading() { return JSON.stringify(renderer.toJSON()).includes('불러오는 중...') },
+    get text() { return JSON.stringify(renderer.toJSON()) },
     startRefetch() { holdData = true; return data.refetch() },
     finishRefetch(fail = false) {
       holdData = false
@@ -168,6 +169,26 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
     async cleanup() { await flush(() => renderer.unmount()) },
   }
 }
+
+for (const initialRole of ['admin', 'viewer']) {
+  test(`signed-in ${initialRole} opening /login reaches the people screen`, async () => {
+    const app = await mountApp({ initialPath: '/login', initialRole })
+    try {
+      assert.match(app.text, /등록된 인물이 없어요/)
+      assert.doesNotMatch(app.text, /로그인하고 시작하세요/)
+    } finally { await app.cleanup() }
+  })
+}
+
+test('/login shows the login form without a session and opens the app after sign-in', async () => {
+  const app = await mountApp({ initialPath: '/login', signedIn: false, initialRole: 'viewer' })
+  try {
+    assert.match(app.text, /로그인하고 시작하세요/)
+    await app.flush(() => app.emit('SIGNED_IN'))
+    assert.match(app.text, /등록된 인물이 없어요/)
+    assert.doesNotMatch(app.text, /로그인하고 시작하세요/)
+  } finally { await app.cleanup() }
+})
 
 test('real add form stays mounted across tab return, token refresh, failed role lookup and recovery', async () => {
   const app = await mountApp()

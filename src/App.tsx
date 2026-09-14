@@ -26,6 +26,7 @@ function AuthGate() {
   return (
     <DataProvider key={`${user.id}:${role}`} role={role} viewerGender={viewerGender}>
       <Routes>
+        <Route path="/login" element={<Navigate to="/people" replace />} />
         <Route path="/" element={<Layout user={user} onSignOut={signOut} />}>
           <Route index element={<Navigate to="/people" replace />} />
           <Route path="people" element={<PeoplePage userId={user.id} />} />
