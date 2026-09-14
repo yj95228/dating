@@ -32,6 +32,16 @@ export const getAge = (year: string | null): string =>
 export const getAvatarBg = (gender: 'male' | 'female', id: number): string =>
   (gender === 'male' ? MALE_GRADIENTS : FEMALE_GRADIENTS)[id % 3]
 
+export const getPersonProfileTitle = (person: Person): string => {
+  const year = person.year?.trim()
+  return [
+    year && `${year}년생`,
+    person.height != null ? `${person.height}cm` : null,
+    person.location?.trim(),
+    person.job?.trim(),
+  ].filter(Boolean).join(' · ') || '프로필'
+}
+
 export const getPersonDisplayName = (person: Person, people: Person[]): string => {
   if (person.name?.trim()) return person.name.trim()
 

@@ -6,7 +6,7 @@ import PersonForm from '@/components/PersonForm'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import Lightbox from '@/components/Lightbox'
 import Avatar from '@/components/Avatar'
-import { getAge, getPersonDisplayName, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
+import { getAge, getPersonDisplayName, getPersonProfileTitle, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
 import type { PersonFormState, PersonStatus } from '@/types'
 
 const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }> = {
@@ -43,7 +43,7 @@ export default function PersonDetail() {
   const isInactive = person.status === '비활성'
   const status = person.status ?? '활성'
   const sb = STATUS_BADGE[status]
-  const displayName = getPersonDisplayName(person, people)
+  const displayName = canManage ? getPersonDisplayName(person, people) : getPersonProfileTitle(person)
   const relatedMatches = matches.filter((m) => m.male_id === person.id || m.female_id === person.id)
   const metaParts = [
     person.year && `${person.year}년생 (${getAge(person.year)})`,
@@ -149,16 +149,17 @@ export default function PersonDetail() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24 }}>
         <Avatar
           photos={person.photos} name={displayName}
+          label={canManage ? undefined : person.gender === 'male' ? '남' : '여'}
           gender={person.gender} pid={person.id} size={80}
           onClick={person.photos.length > 0 ? () => setLightbox({ photos: person.photos, idx: 0 }) : undefined}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
+            <div style={canManage ? undefined : { minWidth: 0, overflowWrap: 'anywhere' }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>
                 {displayName}
               </div>
-              {metaParts.length > 0 && (
+              {canManage && metaParts.length > 0 && (
                 <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.8 }}>
                   {metaParts.map((m, i) => <div key={i}>{m}</div>)}
                 </div>
@@ -199,7 +200,7 @@ export default function PersonDetail() {
 
           {/* 배지들 */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-            {badge(person.gender === 'male' ? '남자' : '여자', genderStyle.color, genderStyle.bg, genderStyle.border)}
+            {canManage && badge(person.gender === 'male' ? '남자' : '여자', genderStyle.color, genderStyle.bg, genderStyle.border)}
             {badge(`${STATUS_EMOJI[status]} ${status}`, sb.color, sb.bg, sb.border)}
             {!person.is_direct && badge('🤝 건너건너', '#c4b5fd', 'rgba(167,139,250,0.2)', '#a78bfa')}
           </div>
@@ -214,10 +215,10 @@ export default function PersonDetail() {
       )}
 
       {/* 이상형 */}
-      {person.ideal_type && (
+      {(canManage ? person.ideal_type : person.ideal_type?.trim()) && (
         <div style={{ marginBottom: 24 }}>
           <div className="section-label">이상형 / 조건</div>
-          <div style={{ background: 'rgba(244,114,182,0.06)', border: '1px solid rgba(244,114,182,0.15)', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: 'rgba(251,207,232,0.8)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+          <div style={{ background: 'rgba(244,114,182,0.06)', border: '1px solid rgba(244,114,182,0.15)', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: 'rgba(251,207,232,0.8)', lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: canManage ? undefined : 'anywhere' }}>
             {person.ideal_type}
           </div>
         </div>

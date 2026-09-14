@@ -4,13 +4,14 @@ import type { Gender } from '@/types'
 interface AvatarProps {
   photos?: string[]
   name: string
+  label?: string
   gender: Gender
   pid: number
   size?: number
   onClick?: (e?: React.MouseEvent) => void
 }
 
-export default function Avatar({ photos, name, gender, pid, size = 56, onClick }: AvatarProps) {
+export default function Avatar({ photos, name, label, gender, pid, size = 56, onClick }: AvatarProps) {
   const bg = getAvatarBg(gender, pid)
   const photo = photos?.[0]
 
@@ -25,7 +26,7 @@ export default function Avatar({ photos, name, gender, pid, size = 56, onClick }
     <img src={photo} onClick={onClick} style={{ ...sharedStyle, objectFit: 'cover' }} />
   ) : (
     <div onClick={onClick} style={{ ...sharedStyle, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#fff' }}>
-      {name?.[0] ?? '?'}
+      {label ?? name?.[0] ?? '?'}
     </div>
   )
 }

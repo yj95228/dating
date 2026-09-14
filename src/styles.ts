@@ -1,6 +1,16 @@
 import type { CSSProperties } from 'react'
 
 export const S: Record<string, CSSProperties> = {
+  twoLineEllipsis: {
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+    whiteSpace: 'normal',
+    lineHeight: 1.5,
+    minWidth: 0,
+  },
   input: {
     width: '100%',
     background: 'rgba(255,255,255,0.06)',

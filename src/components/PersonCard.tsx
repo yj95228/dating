@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import Avatar from './Avatar'
 import ConfirmDialog from './ConfirmDialog'
-import { getAge, getPersonDisplayName } from '@/constants'
+import { getAge, getPersonDisplayName, getPersonProfileTitle } from '@/constants'
+import { S } from '@/styles'
 import type { Person, PersonStatus } from '@/types'
 
 const GENDER_BADGE = {
@@ -35,7 +36,8 @@ export default function PersonCard({ person: p, people, canManage, onEdit, onSta
   const status = p.status ?? '활성'
   const gb = GENDER_BADGE[p.gender]
   const sb = STATUS_BADGE[status]
-  const displayName = getPersonDisplayName(p, people)
+  const displayName = canManage ? getPersonDisplayName(p, people) : getPersonProfileTitle(p)
+  const idealType = p.ideal_type?.trim()
 
   const meta = [
     p.year && `${p.year}년생 (${getAge(p.year)})`,
@@ -64,11 +66,12 @@ export default function PersonCard({ person: p, people, canManage, onEdit, onSta
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <Avatar
               photos={p.photos} name={displayName} gender={p.gender} pid={p.id} size={48}
-              onClick={(e) => { e?.stopPropagation(); if (p.photos.length > 0) onPhotoClick(p.photos, 0) }}
+              label={canManage ? undefined : gb.label}
+              onClick={canManage ? (e) => { e?.stopPropagation(); if (p.photos.length > 0) onPhotoClick(p.photos, 0) } : undefined}
             />
-            <span style={{ position: 'absolute', top: -4, left: -4, ...badgeStyle(gb.color, gb.bg, gb.border) }}>
+            {canManage && <span style={{ position: 'absolute', top: -4, left: -4, ...badgeStyle(gb.color, gb.bg, gb.border) }}>
               {gb.label}
-            </span>
+            </span>}
             {p.photos.length > 1 && (
               <span style={{ position: 'absolute', bottom: -4, right: -4, fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 6, background: '#1e1830', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 +{p.photos.length - 1}
@@ -79,7 +82,7 @@ export default function PersonCard({ person: p, people, canManage, onEdit, onSta
           {/* 정보 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(!canManage ? S.twoLineEllipsis : {}) }}>
                 {displayName}
               </div>
               {canManage && <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>
@@ -112,9 +115,15 @@ export default function PersonCard({ person: p, people, canManage, onEdit, onSta
               </div>}
             </div>
 
-            {meta && (
+            {canManage && meta && (
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {meta}
+              </div>
+            )}
+
+            {!canManage && idealType && (
+              <div style={{ ...S.twoLineEllipsis, fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>
+                이상형 · {idealType}
               </div>
             )}
 
