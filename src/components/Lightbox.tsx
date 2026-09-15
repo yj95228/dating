@@ -13,6 +13,8 @@ interface TouchPosition {
 }
 
 const initialView = { scale: 1, x: 0, y: 0 }
+const edgeSwipeThreshold = 50
+const edgePositionTolerance = 4
 
 function getTouchPosition(touches: React.TouchList): TouchPosition | null {
   if (!touches.length) return null
@@ -36,6 +38,9 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
   const previousTouch = useRef<TouchPosition | null>(null)
   const swipeStart = useRef<TouchPosition | null>(null)
   const suppressSwipe = useRef(false)
+  const pinchedInGesture = useRef(false)
+  const edgeSwipe = useRef(false)
+  const edgeSwipeStart = useRef<'left' | 'right' | null>(null)
 
   const resetView = () => {
     viewRef.current = initialView
@@ -43,6 +48,9 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
     previousTouch.current = null
     swipeStart.current = null
     suppressSwipe.current = false
+    pinchedInGesture.current = false
+    edgeSwipe.current = false
+    edgeSwipeStart.current = null
   }
 
   useEffect(() => {
@@ -69,8 +77,29 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
     if (!previousTouch.current) {
       swipeStart.current = position
       suppressSwipe.current = viewRef.current.scale > 1
+      pinchedInGesture.current = false
+      edgeSwipe.current = false
+      const viewport = viewportRef.current
+      const image = imageRef.current
+      if (viewRef.current.scale > 1 && viewport && image) {
+        // Edge navigation requires a new gesture that begins at an actual image edge.
+        const bounds = viewport.getBoundingClientRect()
+        const maxX = Math.max(0, (image.offsetWidth * viewRef.current.scale - bounds.width) / 2)
+        if (maxX > 0 && Math.abs(viewRef.current.x + maxX) <= edgePositionTolerance) {
+          edgeSwipeStart.current = 'left'
+        } else if (maxX > 0 && Math.abs(viewRef.current.x - maxX) <= edgePositionTolerance) {
+          edgeSwipeStart.current = 'right'
+        } else {
+          edgeSwipeStart.current = null
+        }
+      } else {
+        edgeSwipeStart.current = null
+      }
     }
-    if (event.touches.length > 1) suppressSwipe.current = true
+    if (event.touches.length > 1) {
+      suppressSwipe.current = true
+      pinchedInGesture.current = true
+    }
     previousTouch.current = position
   }
 
@@ -83,7 +112,10 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
 
     const oldView = viewRef.current
     const pinching = event.touches.length > 1
-    if (pinching) suppressSwipe.current = true
+    if (pinching) {
+      suppressSwipe.current = true
+      pinchedInGesture.current = true
+    }
     if (pinching || oldView.scale > 1) {
       const scale = pinching && previous.distance > 0
         ? Math.min(4, Math.max(1, oldView.scale * current.distance / previous.distance))
@@ -94,10 +126,17 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
       const centerY = bounds.top + bounds.height / 2
       const maxX = Math.max(0, (image.offsetWidth * scale - bounds.width) / 2)
       const maxY = Math.max(0, (image.offsetHeight * scale - bounds.height) / 2)
+      const nextX = current.x - centerX - (previous.x - centerX - oldView.x) * ratio
+      const nextY = current.y - centerY - (previous.y - centerY - oldView.y) * ratio
+      if (!pinching && !pinchedInGesture.current && oldView.scale > 1) {
+        const swipingPastLeftEdge = edgeSwipeStart.current === 'left' && nextX < -maxX - edgeSwipeThreshold
+        const swipingPastRightEdge = edgeSwipeStart.current === 'right' && nextX > maxX + edgeSwipeThreshold
+        edgeSwipe.current ||= swipingPastLeftEdge || swipingPastRightEdge
+      }
       const nextView = {
         scale,
-        x: Math.max(-maxX, Math.min(maxX, current.x - centerX - (previous.x - centerX - oldView.x) * ratio)),
-        y: Math.max(-maxY, Math.min(maxY, current.y - centerY - (previous.y - centerY - oldView.y) * ratio)),
+        x: Math.max(-maxX, Math.min(maxX, nextX)),
+        y: Math.max(-maxY, Math.min(maxY, nextY)),
       }
       viewRef.current = nextView
       setView(nextView)
@@ -112,16 +151,20 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
     }
     const start = swipeStart.current
     const end = getTouchPosition(event.changedTouches)
-    if (!suppressSwipe.current && start && end && photos.length > 1) {
+    const canSwipe = !suppressSwipe.current || (edgeSwipe.current && !pinchedInGesture.current)
+    if (canSwipe && start && end && photos.length > 1) {
       const distanceX = start.x - end.x
       const distanceY = start.y - end.y
-      if (Math.abs(distanceX) > 50 && Math.abs(distanceX) > Math.abs(distanceY)) {
+      if (Math.abs(distanceX) > edgeSwipeThreshold && Math.abs(distanceX) > Math.abs(distanceY)) {
         setIdx((currentIdx) => (currentIdx + (distanceX > 0 ? 1 : -1) + photos.length) % photos.length)
       }
     }
     previousTouch.current = null
     swipeStart.current = null
     suppressSwipe.current = false
+    pinchedInGesture.current = false
+    edgeSwipe.current = false
+    edgeSwipeStart.current = null
   }
 
   const navBtn: React.CSSProperties = {
@@ -149,6 +192,9 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
           previousTouch.current = null
           swipeStart.current = null
           suppressSwipe.current = false
+          pinchedInGesture.current = false
+          edgeSwipe.current = false
+          edgeSwipeStart.current = null
         }}
         style={{ width: '90vw', height: '72vh', flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', userSelect: 'none' }}
       >
