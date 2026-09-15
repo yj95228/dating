@@ -42,6 +42,13 @@ export const getPersonProfileTitle = (person: Person): string => {
   ].filter(Boolean).join(' · ') || '프로필'
 }
 
+export const sortPeopleForList = (people: Person[]): Person[] =>
+  [...people].sort((a, b) =>
+    Number(b.is_direct) - Number(a.is_direct)
+    || a.created_at.localeCompare(b.created_at)
+    || a.id - b.id
+  )
+
 export const getPersonDisplayName = (person: Person, people: Person[]): string => {
   if (person.name?.trim()) return person.name.trim()
 

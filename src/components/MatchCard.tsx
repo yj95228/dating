@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Avatar from './Avatar'
 import ConfirmDialog from './ConfirmDialog'
 import { S } from '@/styles'
-import { RESULTS, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
+import { getPersonDisplayName, RESULTS, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
 import type { Match, MatchResult, Person } from '@/types'
 
 interface MatchCardProps {
@@ -17,6 +17,8 @@ export default function MatchCard({ match: m, people, canManage, onUpdateResult,
   const [confirmDelete, setConfirmDelete] = useState(false)
   const male = people.find((p) => p.id === m.male_id)
   const female = people.find((p) => p.id === m.female_id)
+  const maleDisplayName = male ? getPersonDisplayName(male, people) : '이름 없음'
+  const femaleDisplayName = female ? getPersonDisplayName(female, people) : '이름 없음'
 
   return (
     <>
@@ -27,21 +29,21 @@ export default function MatchCard({ match: m, people, canManage, onUpdateResult,
 
         {/* 페어 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-            <Avatar photos={male?.photos} name={male?.name ?? '?'} gender="male" pid={male?.id ?? 0} size={42} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{male?.name ?? '이름 없음'}</div>
-              <div style={{ fontSize: 11, color: '#7070a0' }}>{[male?.year && `${male.year}년생`, male?.location].filter(Boolean).join(' ')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+            <Avatar photos={male?.photos} name={maleDisplayName} gender="male" pid={male?.id ?? 0} size={42} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div title={maleDisplayName} style={{ ...S.singleLineEllipsis, fontSize: 13, fontWeight: 700 }}>{maleDisplayName}</div>
+              <div style={{ ...S.balancedText, fontSize: 11, color: '#7070a0' }}>{[male?.year && `${male.year}년생`, male?.location].filter(Boolean).join(' · ')}</div>
             </div>
           </div>
 
           <div style={{ fontSize: 20, flexShrink: 0 }}>💘</div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, flexDirection: 'row-reverse' }}>
-            <Avatar photos={female?.photos} name={female?.name ?? '?'} gender="female" pid={female?.id ?? 0} size={42} />
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{female?.name ?? '이름 없음'}</div>
-              <div style={{ fontSize: 11, color: '#7070a0' }}>{[female?.year && `${female.year}년생`, female?.location].filter(Boolean).join(' ')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexDirection: 'row-reverse' }}>
+            <Avatar photos={female?.photos} name={femaleDisplayName} gender="female" pid={female?.id ?? 0} size={42} />
+            <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+              <div title={femaleDisplayName} style={{ ...S.singleLineEllipsis, fontSize: 13, fontWeight: 700 }}>{femaleDisplayName}</div>
+              <div style={{ ...S.balancedText, fontSize: 11, color: '#7070a0' }}>{[female?.year && `${female.year}년생`, female?.location].filter(Boolean).join(' · ')}</div>
             </div>
           </div>
         </div>

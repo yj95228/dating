@@ -82,7 +82,7 @@ export default function PersonCard({ person: p, people, canManage, onEdit, onSta
           {/* 정보 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(!canManage ? S.twoLineEllipsis : {}) }}>
+              <div title={displayName} style={{ ...(canManage ? S.singleLineEllipsis : S.twoLineEllipsis), fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.9)' }}>
                 {displayName}
               </div>
               {canManage && <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>

@@ -5,6 +5,7 @@ import Modal from '@/components/Modal'
 import PersonCard from '@/components/PersonCard'
 import PersonForm from '@/components/PersonForm'
 import { clearPersonDraft, readPersonDraft, writePersonDraft } from '@/lib/personDraft'
+import { sortPeopleForList } from '@/constants'
 import type { Person, PersonFormState, GenderFilter, PersonStatus } from '@/types'
 
 type StatusFilter = 'all' | 'active' | 'resting' | 'inactive'
@@ -89,10 +90,9 @@ export default function PeoplePage({ userId }: { userId: string }) {
     return true
   })
 
-  const filtered = base
+  const filtered = sortPeopleForList(base
     .filter((p) => filterG === 'all' || p.gender === filterG)
-    .filter((p) => showDirect === null ? true : showDirect === 'true' ? p.is_direct : !p.is_direct)
-    .sort((a, b) => Number(b.is_direct) - Number(a.is_direct))
+    .filter((p) => showDirect === null ? true : showDirect === 'true' ? p.is_direct : !p.is_direct))
 
   // 적용된 필터 수 (성별 제외)
   const activeFilterCount = [statusFilter !== 'all', showDirect !== null].filter(Boolean).length

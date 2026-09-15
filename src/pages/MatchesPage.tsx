@@ -4,7 +4,7 @@ import Modal from '@/components/Modal'
 import MatchCard from '@/components/MatchCard'
 import Avatar from '@/components/Avatar'
 import { S } from '@/styles'
-import { getAge } from '@/constants'
+import { getAge, getPersonDisplayName, sortPeopleForList } from '@/constants'
 import type { MatchFormState, MatchResult, Person } from '@/types'
 
 function PersonPickerModal({
@@ -31,6 +31,7 @@ function PersonPickerModal({
           {people.map((p) => {
             const isSelected = selected === String(p.id)
             const meta = [p.year && `${p.year}년생 (${getAge(p.year)})`, p.location].filter(Boolean).join(' · ')
+            const displayName = getPersonDisplayName(p, people)
             return (
               <div
                 key={p.id}
@@ -45,10 +46,10 @@ function PersonPickerModal({
                 onMouseEnter={(e) => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
                 onMouseLeave={(e) => !isSelected && (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
               >
-                <Avatar photos={p.photos} name={p.name ?? '?'} gender={p.gender} pid={p.id} size={44} />
+                <Avatar photos={p.photos} name={displayName} gender={p.gender} pid={p.id} size={44} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#f1f0ff' }}>{p.name ?? '이름 없음'}</div>
-                  <div style={{ fontSize: 12, color: '#7070a0', marginTop: 2 }}>{meta || '정보 없음'}</div>
+                  <div title={displayName} style={{ ...S.singleLineEllipsis, fontWeight: 700, fontSize: 14, color: '#f1f0ff' }}>{displayName}</div>
+                  <div style={{ ...S.balancedText, fontSize: 12, color: '#7070a0', marginTop: 2 }}>{meta || '정보 없음'}</div>
                 </div>
                 {isSelected && <span style={{ color: '#a78bfa', fontSize: 16 }}>✓</span>}
               </div>
@@ -67,8 +68,8 @@ export default function MatchesPage() {
   const [mForm, setMForm] = useState<MatchFormState>({ maleId: '', femaleId: '', note: '' })
   const [pickerTarget, setPickerTarget] = useState<'male' | 'female' | null>(null)
 
-  const males = people.filter((p) => p.gender === 'male')
-  const females = people.filter((p) => p.gender === 'female')
+  const males = sortPeopleForList(people.filter((p) => p.gender === 'male'))
+  const females = sortPeopleForList(people.filter((p) => p.gender === 'female'))
 
   const selectedMale = people.find((p) => String(p.id) === mForm.maleId)
   const selectedFemale = people.find((p) => String(p.id) === mForm.femaleId)
@@ -101,12 +102,12 @@ export default function MatchesPage() {
       >
         {person ? (
           <>
-            <Avatar photos={person.photos} name={person.name ?? '?'} gender={person.gender} pid={person.id} size={36} />
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f0ff' }}>{person.name ?? '이름 없음'}</div>
-              <div style={{ fontSize: 11, color: '#7070a0' }}>{person.year && `${person.year}년생`}</div>
+            <Avatar photos={person.photos} name={getPersonDisplayName(person, people)} gender={person.gender} pid={person.id} size={36} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div title={getPersonDisplayName(person, people)} style={{ ...S.singleLineEllipsis, fontSize: 14, fontWeight: 700, color: '#f1f0ff' }}>{getPersonDisplayName(person, people)}</div>
+              <div style={{ fontSize: 11, color: '#7070a0', wordBreak: 'keep-all' }}>{person.year && `${person.year}년생`}</div>
             </div>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#7070a0' }}>변경 ›</span>
+            <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: '#7070a0' }}>변경 ›</span>
           </>
         ) : (
           <>

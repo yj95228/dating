@@ -6,6 +6,7 @@ import PersonForm from '@/components/PersonForm'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import Lightbox from '@/components/Lightbox'
 import Avatar from '@/components/Avatar'
+import { S } from '@/styles'
 import { getAge, getPersonDisplayName, getPersonProfileTitle, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
 import type { PersonFormState, PersonStatus } from '@/types'
 
@@ -155,7 +156,7 @@ export default function PersonDetail() {
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={canManage ? undefined : { minWidth: 0, overflowWrap: 'anywhere' }}>
+            <div style={canManage ? undefined : S.balancedText}>
               <div style={{ fontSize: 20, fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>
                 {displayName}
               </div>
@@ -255,8 +256,8 @@ export default function PersonDetail() {
                 style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(255,255,255,0.04)', borderRadius: 12, marginBottom: 8, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.06)', transition: 'background 0.15s' }}>
                 <Avatar photos={partner?.photos} name={partner?.name ?? '?'} gender={partnerGender} pid={partner?.id ?? 0} size={40} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{partner?.name ?? '이름 없음'}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                  <div title={partner ? getPersonDisplayName(partner, people) : '이름 없음'} style={{ ...S.singleLineEllipsis, fontSize: 14, fontWeight: 600 }}>{partner ? getPersonDisplayName(partner, people) : '이름 없음'}</div>
+                  <div style={{ ...S.balancedText, fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
                     {[partner?.year && `${partner.year}년생`, partner?.location].filter(Boolean).join(' · ')}
                   </div>
                 </div>

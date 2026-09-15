@@ -1,12 +1,26 @@
 import type { CSSProperties } from 'react'
 
+const balancedText: CSSProperties = {
+  wordBreak: 'keep-all',
+  overflowWrap: 'break-word',
+  textWrap: 'balance',
+  minWidth: 0,
+}
+
 export const S: Record<string, CSSProperties> = {
+  balancedText,
+  singleLineEllipsis: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   twoLineEllipsis: {
+    ...balancedText,
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
     overflow: 'hidden',
-    overflowWrap: 'anywhere',
     whiteSpace: 'normal',
     lineHeight: 1.5,
     minWidth: 0,
