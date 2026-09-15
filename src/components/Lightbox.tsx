@@ -68,7 +68,9 @@ export default function Lightbox({ photos, startIdx, onClose }: LightboxProps) {
     const position = getTouchPosition(event.touches)
     if (!previousTouch.current) {
       swipeStart.current = position
-      suppressSwipe.current = viewRef.current.scale > 1
+      // A zoomed image can still be changed with a one-finger horizontal swipe.
+      // Only gestures that actually pinch should suppress gallery navigation.
+      suppressSwipe.current = false
     }
     if (event.touches.length > 1) suppressSwipe.current = true
     previousTouch.current = position
