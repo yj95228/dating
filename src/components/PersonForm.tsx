@@ -118,7 +118,6 @@ export default function PersonForm({ initial, onSave, draftUserId }: PersonFormP
   }
   const [uploading, setUploading] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
-  const filesRef = useRef<HTMLInputElement>(null)
 
   const set = <K extends keyof PersonFormState>(key: K, val: PersonFormState[K]) =>
     setForm((f) => ({ ...f, [key]: val }))
@@ -221,21 +220,11 @@ export default function PersonForm({ initial, onSave, draftUserId }: PersonFormP
               ))}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => !uploading && filesRef.current?.click()} disabled={uploading}
-              style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(167,139,250,0.45)', background: 'rgba(167,139,250,0.12)', color: '#ddd6fe', fontSize: 13, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1, fontFamily: 'inherit' }}>
-              {uploading ? '⏳ 업로드 중...' : '📁 최근/다운로드에서 선택'}
-            </button>
-            <button onClick={() => !uploading && photoRef.current?.click()} disabled={uploading}
-              style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: 13, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1, fontFamily: 'inherit' }}>
-              🖼️ 사진 앨범에서 선택
-            </button>
-          </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>
-            파일 선택창에서 '최근' 또는 '다운로드'를 찾아보세요. 화면과 정렬은 휴대폰에 따라 달라요.
-          </div>
-          <input ref={filesRef} type="file" multiple onChange={handlePhotos} style={{ display: 'none' }} />
-          <input ref={photoRef} type="file" accept="image/*" multiple onChange={handlePhotos} style={{ display: 'none' }} />
+          <button onClick={() => !uploading && photoRef.current?.click()} disabled={uploading}
+            style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: 13, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1, fontFamily: 'inherit' }}>
+            {uploading ? '⏳ 업로드 중...' : '📷 사진 추가'}
+          </button>
+          <input ref={photoRef} type="file" multiple onChange={handlePhotos} style={{ display: 'none' }} />
         </>
       )}
 
