@@ -21,18 +21,30 @@ async function resizeImage(file: File, maxPx = 1920, quality = 0.85): Promise<Fi
   return new Promise((resolve) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('이 사진을 열 수 없어요. JPG 또는 PNG 이미지로 다시 시도해 주세요.'))
+    }
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
-      const w = Math.round(img.width * scale)
-      const h = Math.round(img.height * scale)
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
-      canvas.toBlob((blob) => {
-        resolve(new File([blob!], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
-      }, 'image/jpeg', quality)
+      try {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('사진을 변환하지 못했어요. 다른 이미지로 다시 시도해 주세요.'))
+            return
+          }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
+        }, 'image/jpeg', quality)
+      } catch {
+        reject(new Error('사진을 처리하지 못했어요. 다른 이미지로 다시 시도해 주세요.'))
+      }
     }
     img.src = url
   })
@@ -106,12 +118,24 @@ export default function PersonForm({ initial, onSave, draftUserId }: PersonFormP
   }
   const [uploading, setUploading] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
+  const filesRef = useRef<HTMLInputElement>(null)
 
   const set = <K extends keyof PersonFormState>(key: K, val: PersonFormState[K]) =>
     setForm((f) => ({ ...f, [key]: val }))
 
   const handlePhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
+    const selectedFiles = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (!selectedFiles.length) return
+
+    // 파일 앱에서는 모든 형식을 선택할 수 있으므로 업로드 전에 이미지만 추립니다.
+    const files = selectedFiles.filter((file) =>
+      file.type.startsWith('image/') ||
+      ((!file.type || file.type === 'application/octet-stream') && /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(file.name))
+    )
+    if (files.length !== selectedFiles.length) {
+      alert('사진 파일만 추가할 수 있어요. 사진이 아닌 파일은 제외했어요.')
+    }
     if (!files.length) return
     setUploading(true)
     try {
@@ -123,7 +147,6 @@ export default function PersonForm({ initial, onSave, draftUserId }: PersonFormP
       alert(`업로드 실패: ${msg}`)
     } finally {
       setUploading(false)
-      e.target.value = ''
     }
   }
 
@@ -198,10 +221,20 @@ export default function PersonForm({ initial, onSave, draftUserId }: PersonFormP
               ))}
             </div>
           )}
-          <button onClick={() => !uploading && photoRef.current?.click()}
-            style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: 13, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1, fontFamily: 'inherit' }}>
-            {uploading ? '⏳ 업로드 중...' : '📷 사진 추가'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => !uploading && filesRef.current?.click()} disabled={uploading}
+              style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(167,139,250,0.45)', background: 'rgba(167,139,250,0.12)', color: '#ddd6fe', fontSize: 13, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1, fontFamily: 'inherit' }}>
+              {uploading ? '⏳ 업로드 중...' : '📁 최근/다운로드에서 선택'}
+            </button>
+            <button onClick={() => !uploading && photoRef.current?.click()} disabled={uploading}
+              style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: 13, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1, fontFamily: 'inherit' }}>
+              🖼️ 사진 앨범에서 선택
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>
+            파일 선택창에서 '최근' 또는 '다운로드'를 찾아보세요. 화면과 정렬은 휴대폰에 따라 달라요.
+          </div>
+          <input ref={filesRef} type="file" multiple onChange={handlePhotos} style={{ display: 'none' }} />
           <input ref={photoRef} type="file" accept="image/*" multiple onChange={handlePhotos} style={{ display: 'none' }} />
         </>
       )}
