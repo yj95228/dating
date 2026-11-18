@@ -45,7 +45,8 @@ export const getPersonProfileTitle = (person: Person): string => {
 export const sortPeopleForList = (people: Person[]): Person[] =>
   [...people].sort((a, b) =>
     Number(b.is_direct) - Number(a.is_direct)
-    || a.created_at.localeCompare(b.created_at)
+    || (a.sort_order ?? 2147483647) - (b.sort_order ?? 2147483647)
+    || (a.created_at ?? '').localeCompare(b.created_at ?? '')
     || a.id - b.id
   )
 

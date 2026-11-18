@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useData } from '@/hooks/useData'
 import Modal from '@/components/Modal'
@@ -13,8 +14,15 @@ type StatusFilter = 'all' | 'active' | 'resting' | 'inactive'
 export default function PeoplePage({ userId }: { userId: string }) {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { people, canManage, viewerGender, addPerson, updatePerson, updatePersonStatus, deletePerson } = useData()
+  const { people, canManage, viewerGender, addPerson, updatePerson, updatePersonStatus, deletePerson, reorderPeople } = useData()
   const [showFilter, setShowFilter] = useState(false)
+  const [sortMode, setSortMode] = useState(false)
+  const [sortBusy, setSortBusy] = useState(false)
+  const [sortError, setSortError] = useState('')
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [dragPreview, setDragPreview] = useState<{ isDirect: boolean; ids: number[] } | null>(null)
+  const dragRef = useRef<{ cleanup: () => void } | null>(null)
+  useEffect(() => () => { dragRef.current?.cleanup() }, [])
   const [formState, setFormState] = useState<{ open: boolean; person: Person | null }>(() => ({
     open: canManage && readPersonDraft(userId).open,
     person: null,
@@ -94,6 +102,142 @@ export default function PeoplePage({ userId }: { userId: string }) {
     .filter((p) => filterG === 'all' || p.gender === filterG)
     .filter((p) => showDirect === null ? true : showDirect === 'true' ? p.is_direct : !p.is_direct))
 
+  // Preview each move locally: don't wait for the database to show the new order.
+  // Save the full group in one RPC only when the user releases the handle.
+  const orderFor = (isDirect: boolean) =>
+    sortPeopleForList(people.filter(p => Boolean(p.is_direct) === isDirect)).map(p => p.id)
+
+  const reorderIds = (current: number[], sourceId: number, targetId: number, after: boolean) => {
+    const next = current.filter(id => id !== sourceId)
+    const index = next.indexOf(targetId)
+    if (index < 0) return current
+    next.splice(index + (after ? 1 : 0), 0, sourceId)
+    return next
+  }
+
+  const isSameOrder = (a: number[], b: number[]) =>
+    a.length === b.length && a.every((id, i) => id === b[i])
+
+  const persistOrder = async (isDirect: boolean, original: number[], next: number[]) => {
+    if (isSameOrder(original, next)) {
+      setDragPreview(null)
+      return
+    }
+    setSortBusy(true)
+    setSortError('')
+    try {
+      await reorderPeople(isDirect, next)
+    } catch (err) {
+      // The original people state was never changed; removing the preview rolls back.
+      setSortError(err instanceof Error ? err.message : '순서를 저장하지 못했어요.')
+    } finally {
+      setDragPreview(null)
+      setSortBusy(false)
+    }
+  }
+
+  const beginDrag = (event: ReactPointerEvent<HTMLButtonElement>, personId: number) => {
+    if (sortBusy || dragRef.current || (event.pointerType === 'mouse' && event.button !== 0)) return
+    const person = people.find(p => p.id === personId)
+    if (!person) return
+    event.preventDefault()
+    event.stopPropagation()
+    const isDirect = Boolean(person.is_direct)
+    const pointerId = event.pointerId
+    const originY = event.clientY
+    const original = orderFor(isDirect)
+    const visible = new Set(filtered.filter(p => Boolean(p.is_direct) === isDirect).map(p => p.id))
+    let current = [...original]
+    let moved = false
+    setDraggingId(personId)
+    setSortError('')
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onEnd)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onCancel)
+    }
+    const clear = () => {
+      cleanup()
+      dragRef.current = null
+      setDraggingId(null)
+    }
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return
+      e.preventDefault()
+      if (!moved && Math.abs(e.clientY - originY) < 5) return
+      moved = true
+      if (e.clientY < 76) window.scrollBy(0, -12)
+      else if (e.clientY > window.innerHeight - 76) window.scrollBy(0, 12)
+      const target = document.elementFromPoint(e.clientX, e.clientY)
+        ?.closest('[data-reorder-person]') as HTMLElement | null
+      const targetId = target ? Number(target.dataset.reorderPerson) : null
+      if (targetId === null || targetId === personId || !visible.has(targetId)) return
+      const rect = target!.getBoundingClientRect()
+      const after = e.clientY >= rect.top + rect.height / 2
+      const next = reorderIds(current, personId, targetId, after)
+      if (isSameOrder(current, next)) return
+      current = next
+      setDragPreview({ isDirect, ids: next })
+    }
+    const onEnd = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return
+      clear()
+      if (moved && !isSameOrder(original, current)) {
+        setDragPreview({ isDirect, ids: current })
+        void persistOrder(isDirect, original, current)
+      } else {
+        setDragPreview(null)
+      }
+    }
+    const onCancel = () => {
+      clear()
+      setDragPreview(null)
+    }
+    dragRef.current = { cleanup }
+    window.addEventListener('pointermove', onMove, { passive: false })
+    window.addEventListener('pointerup', onEnd)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onCancel)
+  }
+
+  const cancelDrag = () => {
+    dragRef.current?.cleanup()
+    dragRef.current = null
+    setDraggingId(null)
+    setDragPreview(null)
+  }
+
+  const keyboardMove = (personId: number, direction: -1 | 1) => {
+    const person = filtered.find(p => p.id === personId)
+    if (!person || sortBusy || dragRef.current) return
+    const isDirect = Boolean(person.is_direct)
+    const visibleGroup = filtered.filter(p => Boolean(p.is_direct) === isDirect)
+    const index = visibleGroup.findIndex(p => p.id === personId)
+    const target = visibleGroup[index + direction]
+    if (!target) return
+    const original = orderFor(isDirect)
+    const next = reorderIds(original, personId, target.id, direction > 0)
+    if (isSameOrder(original, next)) return
+    setDragPreview({ isDirect, ids: next })
+    void persistOrder(isDirect, original, next)
+  }
+
+  const previewPositions = dragPreview
+    ? new Map(dragPreview.ids.map((id, index) => [id, index]))
+    : null
+  const displayedPeople = previewPositions
+    ? [...filtered].sort((a, b) => {
+      if (Boolean(a.is_direct) !== Boolean(b.is_direct)) {
+        return Number(b.is_direct) - Number(a.is_direct)
+      }
+      if (Boolean(a.is_direct) !== dragPreview!.isDirect) return 0
+      return (previewPositions.get(a.id) ?? Number.MAX_SAFE_INTEGER)
+        - (previewPositions.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    })
+    : filtered
+
   // 적용된 필터 수 (성별 제외)
   const activeFilterCount = [statusFilter !== 'all', showDirect !== null].filter(Boolean).length
 
@@ -146,7 +290,6 @@ export default function PeoplePage({ userId }: { userId: string }) {
 
         <button onClick={openAdd} className="btn-outline" style={{ display: canManage ? undefined : 'none', marginLeft: 'auto', flexShrink: 0 }}>+ 인물 추가</button>
       </div>
-
       {/* 필터 패널 */}
       {showFilter && (
         <div style={{
@@ -180,23 +323,89 @@ export default function PeoplePage({ userId }: { userId: string }) {
         </div>
       )}
 
+      <div style={{ display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', gap: 8, margin: '14px 0 10px' }}>
+        <span style={{ display: 'flex', flex: 1, minWidth: 0,
+          flexWrap: 'wrap', alignItems: 'center', gap: '3px 7px',
+          fontSize: 12, color: '#a9a3c9' }}>
+          <span>{filtered.length}명</span>
+          <span>· 남자 {filtered.filter(p => p.gender === 'male').length}명</span>
+          <span>· 여자 {filtered.filter(p => p.gender === 'female').length}명</span>
+        </span>
+        {canManage && (
+          <button type="button" disabled={sortBusy}
+            aria-pressed={sortMode}
+            onClick={() => { cancelDrag(); setSortMode(v => !v); setSortError('') }}
+            style={{ padding: '8px 12px', borderRadius: 10, fontSize: 12,
+              fontWeight: 700, cursor: sortBusy ? 'wait' : 'pointer', fontFamily: 'inherit',
+              border: sortMode ? '1px solid #a78bfa' : '1px solid rgba(255,255,255,0.13)',
+              background: sortMode ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.045)',
+              color: sortMode ? '#ddd6fe' : '#c4b5fd' }}>
+            {sortMode ? '✓ 정렬 완료' : '↕ 순서 편집'}
+          </button>
+        )}
+      </div>
+      {sortBusy && <p role="status" style={{ color: '#c4b5fd', fontSize: 12 }}>변경한 순서를 저장하고 있어요…</p>}
+      {sortError && <p role="alert" style={{ color: '#f87171', fontSize: 12 }}>{sortError}</p>}
+
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 0', color: 'rgba(255,255,255,0.25)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
           {showInactive ? '비활성 인물이 없어요' : '등록된 인물이 없어요'}
         </div>
       ) : (
-        filtered.map((p) => (
-          <PersonCard key={p.id} person={p}
-            people={people}
-            canManage={canManage}
-            onEdit={openEdit}
-            onStatusChange={handleStatusChange}
-            onDelete={(id) => deletePerson(id)}
-            onPhotoClick={() => navigate(`/people/${p.id}`)}
-            onClick={() => navigate(`/people/${p.id}`)}
-          />
-        ))
+        displayedPeople.map((p, index) => {
+          const card = (
+            <PersonCard key={p.id} person={p}
+              people={people}
+              canManage={canManage}
+              onEdit={openEdit}
+              onStatusChange={handleStatusChange}
+              onDelete={(id) => deletePerson(id)}
+              onPhotoClick={() => { if (!sortMode) navigate(`/people/${p.id}`) }}
+              onClick={() => { if (!sortMode) navigate(`/people/${p.id}`) }}
+            />
+          )
+          if (!canManage || !sortMode) return card
+          return (
+            <div key={p.id}>
+              {(index === 0 || Boolean(displayedPeople[index - 1].is_direct) !== Boolean(p.is_direct)) && (
+                <p style={{ color: '#c4b5fd', fontSize: 13, fontWeight: 700, margin: '14px 0 8px' }}>
+                  {p.is_direct ? '🤝 주선자가 직접 아는 사이' : '🔗 건너건너 아는 사이'}
+                </p>
+              )}
+              <div data-reorder-person={p.id}
+                style={{ display: 'grid', gridTemplateColumns: '30px minmax(0,1fr)',
+                  gap: 6, alignItems: 'start', borderRadius: 12,
+                  border: draggingId === p.id ? '1px solid rgba(196,181,253,0.85)' : '1px solid transparent',
+                  background: draggingId === p.id ? 'rgba(167,139,250,0.10)' : 'transparent',
+                  opacity: draggingId === p.id ? 0.74 : 1,
+                  transition: 'background 120ms ease' }}>
+                <button type="button"
+                  aria-label={`${p.name || '후보'} 순서 이동. 드래그하거나 방향키 위아래로 이동`}
+                  title="끌어서 위치 이동 · 키보드 ↑↓"
+                  disabled={sortBusy}
+                  onClick={event => event.stopPropagation()}
+                  onPointerDown={event => beginDrag(event, p.id)}
+                  onKeyDown={event => {
+                    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                      event.preventDefault()
+                      keyboardMove(p.id, event.key === 'ArrowUp' ? -1 : 1)
+                    }
+                  }}
+                  style={{ marginTop: 15, width: 30, height: 54, padding: 0,
+                    touchAction: 'none', userSelect: 'none',
+                    background: draggingId === p.id ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(196,181,253,0.35)', borderRadius: 9,
+                    color: '#ddd6fe', fontSize: 21, fontWeight: 700,
+                    cursor: draggingId === p.id ? 'grabbing' : 'grab' }}>
+                  ⋮⋮
+                </button>
+                <div style={{ minWidth: 0, pointerEvents: 'none' }}>{card}</div>
+              </div>
+            </div>
+          )
+        })
       )}
 
       {canManage && formState.open && (
