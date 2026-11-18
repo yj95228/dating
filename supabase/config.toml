@@ -2,3 +2,7 @@
 # The handler validates the user JWT with Auth and checks the current DB role.
 # This also supports projects using asymmetric JWT signing keys.
 verify_jwt = false
+
+[functions.guest-share]
+# Public guest tokens are checked in the handler; admin routes validate the signed-in user.
+verify_jwt = false

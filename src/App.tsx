@@ -9,6 +9,8 @@ import LoginPage from '@/pages/LoginPage'
 import PeoplePage from '@/pages/PeoplePage'
 import PersonDetail from '@/pages/PersonDetail'
 import MatchesPage from '@/pages/MatchesPage'
+import GuestBrowsePage from '@/pages/GuestBrowsePage'
+import AdminGuestPage from '@/pages/AdminGuestPage'
 
 function AuthGate() {
   const { user, role, loading, signOut } = useAuth()
@@ -32,6 +34,7 @@ function AuthGate() {
           <Route path="people" element={<PeoplePage userId={user.id} />} />
           <Route path="people/:id" element={<PersonDetail />} />
           <Route path="matches" element={<MatchesPage />} />
+          {role === "admin" && <Route path="requests" element={<AdminGuestPage />} />}
         </Route>
       </Routes>
     </DataProvider>
@@ -46,6 +49,7 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/invite" element={<AcceptInvitePage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
+        <Route path="/share/:token" element={<GuestBrowsePage />} />
 
         {/* AuthGate 안 - 로그인 필요 */}
         <Route path="/*" element={<AuthGate />} />
