@@ -49,7 +49,10 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/invite" element={<AcceptInvitePage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
+        <Route path="/i-need-money" element={<GuestBrowsePage />} />
+        <Route path="/share" element={<GuestBrowsePage />} />
         <Route path="/share/:token" element={<GuestBrowsePage />} />
+        <Route path="/s/:token" element={<GuestBrowsePage />} />
 
         {/* AuthGate 안 - 로그인 필요 */}
         <Route path="/*" element={<AuthGate />} />

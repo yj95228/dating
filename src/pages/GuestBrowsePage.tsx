@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { S } from '@/styles'
@@ -20,8 +21,35 @@ const errorMessage = (data: unknown, fallback: string) =>
   data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
     ? data.error : fallback
 
+const ACCESS_STORAGE = 'dating-guest-access-v1'
+const VISITOR_STORAGE = 'dating-guest-visitor-v1'
+const getVisitorId = () => {
+  try {
+    const stored = localStorage.getItem(VISITOR_STORAGE)
+    if (stored && /^[0-9a-f-]{36}$/i.test(stored)) return stored
+  } catch { /* Browser storage may be unavailable. */ }
+  const next = crypto.randomUUID()
+  try { localStorage.setItem(VISITOR_STORAGE, next) } catch { /* Private browsing. */ }
+  return next
+}
+const isUnauthorized = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('context' in error)) return false
+  const response = (error as { context?: unknown }).context
+  return response instanceof Response && response.status === 401
+}
+const failureText = async (error: unknown, fallback: string) => {
+  if (!error || typeof error !== 'object' || !('context' in error)) return fallback
+  const response = (error as { context?: unknown }).context
+  if (!(response instanceof Response)) return fallback
+  try {
+    const data: unknown = await response.clone().json()
+    return errorMessage(data, fallback)
+  } catch { return fallback }
+}
+
 export default function GuestBrowsePage() {
-  const { token = '' } = useParams()
+  // The public-looking path is only a nickname for the shared-code entry gate.
+  const { token = 'public' } = useParams()
   const [people, setPeople] = useState<GuestPerson[]>([])
   const [selected, setSelected] = useState<number[]>([])
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all')
@@ -31,26 +59,69 @@ export default function GuestBrowsePage() {
   const [nickname, setNickname] = useState('')
   const [applicantKind, setApplicantKind] = useState<'candidate' | 'introducer'>('candidate')
   const [error, setError] = useState('')
+  const [accessToken, setAccessToken] = useState(() => {
+    try { return localStorage.getItem(ACCESS_STORAGE) ?? '' } catch { return '' }
+  })
+  const [needsCode, setNeedsCode] = useState(false)
+  const [accessCode, setAccessCode] = useState('')
+  const [feeChecked, setFeeChecked] = useState(false)
+  const [visitorId] = useState(getVisitorId)
+  const [authBusy, setAuthBusy] = useState(false)
 
   useEffect(() => {
+    if (!accessToken) {
+      setPeople([])
+      setNeedsCode(true)
+      setLoading(false)
+      return
+    }
     let cancelled = false
     const load = async () => {
       setLoading(true)
       const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-        body: { action: 'browse', token },
+        body: { action: 'browse', token, accessToken },
       })
       if (cancelled) return
-      if (invokeError || !Array.isArray(data?.people)) {
-        setError(errorMessage(data, '공유 링크가 만료되었거나 목록을 불러오지 못했어요.'))
+      if (isUnauthorized(invokeError)) {
+        try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* Storage may be unavailable. */ }
+        setPeople([])
+        setNeedsCode(true)
+        setAccessToken('')
+        setError('')
+      } else if (invokeError || !Array.isArray(data?.people)) {
+        setError(await failureText(invokeError, errorMessage(data,
+          '후보 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')))
       } else {
         setPeople(data.people as GuestPerson[])
+        setNeedsCode(false)
         setError('')
       }
       setLoading(false)
     }
     void load()
     return () => { cancelled = true }
-  }, [token])
+  }, [token, accessToken])
+
+  const unlock = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (authBusy || !accessCode || !feeChecked) return
+    setAuthBusy(true)
+    setError('')
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
+        body: { action: 'unlock', code: accessCode },
+      })
+      if (invokeError || typeof data?.accessToken !== 'string') {
+        throw new Error(await failureText(invokeError, errorMessage(data, '접속 코드를 확인해 주세요.')))
+      }
+      try { localStorage.setItem(ACCESS_STORAGE, data.accessToken) } catch { /* Private browsing */ }
+      setAccessCode('')
+      setNeedsCode(false)
+      setAccessToken(data.accessToken)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '접속 코드를 확인해 주세요.')
+    } finally { setAuthBusy(false) }
+  }
 
   const toggle = (id: number) => {
     setError('')
@@ -65,11 +136,17 @@ export default function GuestBrowsePage() {
     setError('')
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-        body: { action: 'submit', token, nickname: nickname.trim(),
-          applicantKind, personIds: selected },
+        body: { action: 'submit', token, accessToken, nickname: nickname.trim(),
+          applicantKind, personIds: selected, visitorId },
       })
-      if (invokeError || !data?.submitted) {
-        setError(errorMessage(data, '신청을 저장하지 못했어요. 다시 시도해 주세요.'))
+      if (isUnauthorized(invokeError)) {
+        try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* ignore */ }
+        setAccessToken('')
+        setNeedsCode(true)
+        setError('접속 시간이 만료됐어요. 코드를 다시 입력해 주세요.')
+      } else if (invokeError || !data?.submitted) {
+        setError(await failureText(invokeError, errorMessage(data,
+          '신청을 저장하지 못했어요. 다시 시도해 주세요.')))
       } else {
         setStep('done')
       }
@@ -102,7 +179,28 @@ export default function GuestBrowsePage() {
         <span style={{ display: 'block' }}>후보를 둘러보고 관심 있는 사람을 골라 주세요.</span>
         <span style={{ display: 'block' }}>소개 가능 여부는 주선자가 확인한 뒤 안내해 드려요.</span>
       </p>
-      {step === 'done' ? (
+      {needsCode ? (
+        <form onSubmit={unlock} style={{ ...S.card, padding: '24px 20px', marginTop: 26 }}>
+          <h2 style={{ fontSize: 19, marginTop: 0 }}>🔐 접속 코드</h2>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            marginBottom: 22, fontSize: 14, color: '#c4b5fd' }}>
+            <input type="checkbox" checked={feeChecked}
+              onChange={event => setFeeChecked(event.target.checked)}
+              style={{ accentColor: '#a78bfa', width: 18, height: 18, flexShrink: 0 }} />
+            <span>소개팅 성사되면 주선비 입금 부탁드려요 🙇</span>
+          </label>
+          <label htmlFor="guest-access-code" style={{ display: 'block', fontSize: 13,
+            marginBottom: 8 }}>전달받은 접속 코드</label>
+          <input id="guest-access-code" type="password" autoComplete="off"
+            value={accessCode} onChange={event => setAccessCode(event.target.value)}
+            maxLength={64} placeholder="접속 코드 입력" style={S.input} />
+          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
+          <button type="submit" disabled={!accessCode || !feeChecked || authBusy}
+            style={{ ...S.btnPrimary, width: '100%', marginTop: 16 }}>
+            {authBusy ? '확인 중...' : '후보 보러 가기'}
+          </button>
+        </form>
+      ) : step === 'done' ? (
         <div style={{ ...S.card, textAlign: 'center', padding: '38px 20px' }}>
           <div style={{ fontSize: 40 }}>💌</div>
           <h2 style={{ fontSize: 20 }}>관심 신청을 보냈어요!</h2>
