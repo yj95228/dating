@@ -16,6 +16,7 @@ interface DataContextValue {
   updatePerson: (id: number, data: PersonInsert) => Promise<void>
   deletePerson: (id: number) => Promise<void>
   updatePersonStatus: (id: number, status: PersonStatus) => Promise<void>
+  reorderPeople: (isDirect: boolean, orderedIds: number[]) => Promise<void>
   addMatch: (data: MatchInsert) => Promise<void>
   updateMatchResult: (id: number, result: MatchResult) => Promise<void>
   deleteMatch: (id: number) => Promise<void>
@@ -85,8 +86,11 @@ function useDataInternal(role: UserRole, viewerGender: Gender | null): DataConte
   const updatePerson = async (id: number, data: PersonInsert) => {
     if (!canManage) throw new Error('Permission denied')
     const { photos, gender, name, year, location, job, height, ideal_type, note, status, is_direct } = data
+    const groupChanged = people.some(p => p.id === id && Boolean(p.is_direct) !== Boolean(is_direct))
+    const changes = { photos, gender, name, year, location, job, height, ideal_type,
+      note, status, is_direct, ...(groupChanged ? { sort_order: 2147483647 } : {}) }
     const { error } = await supabase.from('people')
-      .update({ photos, gender, name, year, location, job, height, ideal_type, note, status, is_direct })
+      .update(changes)
       .eq('id', id)
     if (error) throw error
     await fetchAll()
@@ -107,6 +111,21 @@ function useDataInternal(role: UserRole, viewerGender: Gender | null): DataConte
       .eq('id', id)
     if (error) throw error
     await fetchAll()
+  }
+
+  // The atomic RPC checks admin access and the full group before changing ranks.
+  const reorderPeople = async (isDirect: boolean, orderedIds: number[]) => {
+    if (!canManage) throw new Error('Permission denied')
+    const { error } = await supabase.rpc('reorder_people_group', {
+      p_is_direct: isDirect,
+      p_ids: orderedIds,
+    })
+    if (error) throw error
+    const rank = new Map(orderedIds.map((id, index) => [id, (index + 1) * 1000]))
+    setPeople(prev => prev.map(person => {
+      const sortOrder = rank.get(person.id)
+      return sortOrder === undefined ? person : { ...person, sort_order: sortOrder }
+    }))
   }
 
   const addMatch = async (data: MatchInsert) => {
@@ -132,7 +151,7 @@ function useDataInternal(role: UserRole, viewerGender: Gender | null): DataConte
 
   return {
     people, matches, loading, initialized, error, role, viewerGender, canManage, refetch: fetchAll,
-    addPerson, updatePerson, deletePerson, updatePersonStatus,
+    addPerson, updatePerson, deletePerson, updatePersonStatus, reorderPeople,
     addMatch, updateMatchResult, deleteMatch,
   }
 }

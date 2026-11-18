@@ -17,6 +17,7 @@ export interface Person {
   photos: string[]
   status: PersonStatus
   is_direct: boolean
+  sort_order: number
 }
 
 export interface Match {
@@ -28,9 +29,9 @@ export interface Match {
   note: string | null
 }
 
-export type PersonInsert = Omit<Person, 'id' | 'created_at'>
+export type PersonInsert = Omit<Person, 'id' | 'created_at' | 'sort_order'>
 export type MatchInsert = Omit<Match, 'id' | 'created_at'>
-export type PersonFormState = Omit<Person, 'id' | 'created_at'>
+export type PersonFormState = Omit<Person, 'id' | 'created_at' | 'sort_order'>
 
 export interface MatchFormState {
   maleId: string

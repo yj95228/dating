@@ -144,15 +144,16 @@ Deno.serve(async request => {
       // The share-token controls access. Every active person is available without
       // a manual approval checkbox; no name, photos, match history or contact data.
       const { data: people, error } = await admin.from('people')
-        .select('id,gender,year,height,location,job,is_direct,ideal_type,note')
+        .select('id,gender,year,height,location,job,is_direct,ideal_type,note,sort_order')
         .eq('status', '활성')
         .order('is_direct', { ascending: false })
+        .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
       if (error) return failure(headers, 503, '목록을 불러오지 못했어요.')
       return response(headers, 200, { people: (people ?? []).map(
-        ({ id, gender, year, height, location, job, is_direct, ideal_type, note }) => ({
-          id, gender, year, height, location, job, is_direct,
+        ({ id, gender, year, height, location, job, is_direct, ideal_type, note, sort_order }) => ({
+          id, gender, year, height, location, job, is_direct, sort_order,
           public_ideal_type: ideal_type ?? '',
           public_traits: note ?? '',
         })

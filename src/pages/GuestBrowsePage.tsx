@@ -7,6 +7,7 @@ type GuestPerson = {
   id: number
   gender: 'male' | 'female'
   is_direct: boolean
+  sort_order: number
   year: string | null
   height: number | null
   location: string | null
@@ -81,7 +82,9 @@ export default function GuestBrowsePage() {
   // Grouping happens after gender filtering, so the visual separator always stays correct.
   const filteredPeople = people
     .filter(person => genderFilter === 'all' || person.gender === genderFilter)
-    .sort((a, b) => Number(b.is_direct) - Number(a.is_direct))
+    .sort((a, b) => Number(b.is_direct) - Number(a.is_direct)
+      || (a.sort_order ?? 2147483647) - (b.sort_order ?? 2147483647)
+      || a.id - b.id)
 
   const filterStyle = (selected: boolean, color: string, background: string) => ({
     border: `1px solid ${selected ? color : 'rgba(255,255,255,0.12)'}`,
