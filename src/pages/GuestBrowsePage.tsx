@@ -64,7 +64,7 @@ export default function GuestBrowsePage() {
   })
   const [needsCode, setNeedsCode] = useState(false)
   const [accessCode, setAccessCode] = useState('')
-  const [feeChecked, setFeeChecked] = useState(false)
+  const [guideAcknowledged, setGuideAcknowledged] = useState(false)
   const [visitorId] = useState(getVisitorId)
   const [authBusy, setAuthBusy] = useState(false)
 
@@ -104,7 +104,7 @@ export default function GuestBrowsePage() {
 
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (authBusy || !accessCode || !feeChecked) return
+    if (authBusy || !accessCode || !guideAcknowledged) return
     setAuthBusy(true)
     setError('')
     try {
@@ -188,13 +188,18 @@ export default function GuestBrowsePage() {
             maxLength={64} placeholder="접속 코드 입력" style={S.input} />
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-            marginTop: 18, marginBottom: 16, fontSize: 14, color: '#c4b5fd' }}>
-            <input type="checkbox" checked={feeChecked}
-              onChange={event => setFeeChecked(event.target.checked)}
+            marginTop: 18, marginBottom: 8, fontSize: 14, color: '#c4b5fd' }}>
+            <input type="checkbox" checked={guideAcknowledged}
+              onChange={event => setGuideAcknowledged(event.target.checked)}
               style={{ accentColor: '#a78bfa', width: 18, height: 18, flexShrink: 0 }} />
-            <span>소개팅 성사되면 주선비 입금 부탁드려요 🙇</span>
+            <span style={{ display: 'block', lineHeight: 1.65 }}>
+              <strong style={{ display: 'block', fontWeight: 600 }}>소개팅 안내를 확인했어요.</strong>
+              <span style={{ display: 'block', fontSize: 12, color: '#a9a3c9', marginTop: 2 }}>
+                좋은 인연이 이어지면 작은 후원도 환영해요 ☕ (선택)
+              </span>
+            </span>
           </label>
-          <button type="submit" disabled={!accessCode || !feeChecked || authBusy}
+          <button type="submit" disabled={!accessCode || !guideAcknowledged || authBusy}
             style={{ ...S.btnPrimary, width: '100%', marginTop: 16 }}>
             {authBusy ? '확인 중...' : '소개팅 프로필 보기'}
           </button>
