@@ -90,7 +90,7 @@ export default function GuestBrowsePage() {
         setError('')
       } else if (invokeError || !Array.isArray(data?.people)) {
         setError(await failureText(invokeError, errorMessage(data,
-          '후보 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')))
+          '프로필을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')))
       } else {
         setPeople(data.people as GuestPerson[])
         setNeedsCode(false)
@@ -174,30 +174,29 @@ export default function GuestBrowsePage() {
   return (
     <main style={{ minHeight: '100vh', maxWidth: 560, margin: '0 auto', padding: '32px 18px 80px',
       color: '#f1f0ff', fontFamily: "'Noto Sans KR', sans-serif" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 6 }}>💘 소개팅 후보 둘러보기</h1>
+      <h1 style={{ fontSize: 24, marginBottom: 6 }}>💘 소개팅 프로필 보기</h1>
       <p style={{ color: '#a9a3c9', fontSize: 13, lineHeight: 1.8 }}>
-        <span style={{ display: 'block' }}>후보를 둘러보고 관심 있는 사람을 골라 주세요.</span>
+        <span style={{ display: 'block' }}>프로필을 살펴보고 관심 있는 사람을 골라 주세요.</span>
         <span style={{ display: 'block' }}>소개 가능 여부는 주선자가 확인한 뒤 안내해 드려요.</span>
       </p>
       {needsCode ? (
         <form onSubmit={unlock} style={{ ...S.card, padding: '24px 20px', marginTop: 26 }}>
-          <h2 style={{ fontSize: 19, marginTop: 0 }}>🔐 접속 코드</h2>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-            marginBottom: 22, fontSize: 14, color: '#c4b5fd' }}>
-            <input type="checkbox" checked={feeChecked}
-              onChange={event => setFeeChecked(event.target.checked)}
-              style={{ accentColor: '#a78bfa', width: 18, height: 18, flexShrink: 0 }} />
-            <span>소개팅 성사되면 주선비 입금 부탁드려요 🙇</span>
-          </label>
           <label htmlFor="guest-access-code" style={{ display: 'block', fontSize: 13,
             marginBottom: 8 }}>전달받은 접속 코드</label>
           <input id="guest-access-code" type="password" autoComplete="off"
             value={accessCode} onChange={event => setAccessCode(event.target.value)}
             maxLength={64} placeholder="접속 코드 입력" style={S.input} />
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            marginTop: 18, marginBottom: 16, fontSize: 14, color: '#c4b5fd' }}>
+            <input type="checkbox" checked={feeChecked}
+              onChange={event => setFeeChecked(event.target.checked)}
+              style={{ accentColor: '#a78bfa', width: 18, height: 18, flexShrink: 0 }} />
+            <span>소개팅 성사되면 주선비 입금 부탁드려요 🙇</span>
+          </label>
           <button type="submit" disabled={!accessCode || !feeChecked || authBusy}
             style={{ ...S.btnPrimary, width: '100%', marginTop: 16 }}>
-            {authBusy ? '확인 중...' : '후보 보러 가기'}
+            {authBusy ? '확인 중...' : '소개팅 프로필 보기'}
           </button>
         </form>
       ) : step === 'done' ? (
@@ -208,12 +207,12 @@ export default function GuestBrowsePage() {
           <p style={{ color: '#a9a3c9', fontSize: 12 }}>이 화면에서는 별도 연락처를 수집하지 않아요.</p>
         </div>
       ) : loading ? (
-        <p style={{ color: '#a9a3c9' }}>후보를 불러오는 중...</p>
+        <p style={{ color: '#a9a3c9' }}>프로필을 불러오는 중...</p>
       ) : step === 'apply' ? (
         <div style={{ ...S.card, padding: 20 }}>
-          <button type="button" onClick={() => setStep('browse')} className="btn-icon">← 후보 다시 선택</button>
+          <button type="button" onClick={() => setStep('browse')} className="btn-icon">← 다시 선택하기</button>
           <h2 style={{ fontSize: 19 }}>💌 관심 신청하기</h2>
-          <p style={{ color: '#a9a3c9', fontSize: 13 }}>선택한 후보 {selected.length}명 · 신청 시 닉네임을 한 번만 입력해요.</p>
+          <p style={{ color: '#a9a3c9', fontSize: 13 }}>선택한 사람 {selected.length}명 · 신청 시 닉네임을 한 번만 입력해요.</p>
           <label htmlFor="guest-kind" style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>어떤 입장이세요?</label>
           <div style={{ display: 'flex', gap: 8, marginBottom: 22 }}>
             {([{ value: 'candidate', label: '소개받고 싶어요' }, { value: 'introducer', label: '중간 주선자예요' }] as const).map(option => (
@@ -232,7 +231,7 @@ export default function GuestBrowsePage() {
             placeholder="예: 민수, 지영 친구, JY" onChange={e => setNickname(e.target.value)}
             style={S.input} />
           <p style={{ fontSize: 12, lineHeight: 1.7, color: '#a9a3c9' }}>
-            닉네임과 선택한 후보는 소개 요청을 확인하기 위해 관리자에게 전달돼요.
+            닉네임과 관심을 표시한 사람은 소개 요청을 확인하기 위해 주선자에게 전달돼요.
             연락처는 받지 않으며 관리자가 별도로 연결합니다.
           </p>
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
@@ -245,7 +244,7 @@ export default function GuestBrowsePage() {
         <>
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
           {!error && people.length === 0 && (
-            <p style={{ color: '#a9a3c9', fontSize: 13 }}>현재 공유 가능한 후보가 없어요.</p>
+            <p style={{ color: '#a9a3c9', fontSize: 13 }}>현재 공개된 프로필이 없어요.</p>
           )}
           {people.length > 0 && (
             <div style={{ margin: '16px 0 14px' }}>
@@ -267,7 +266,7 @@ export default function GuestBrowsePage() {
             </div>
           )}
           {people.length > 0 && filteredPeople.length === 0 && (
-            <p style={{ color: '#a9a3c9', fontSize: 13 }}>선택한 필터에 해당하는 후보가 없어요.</p>
+            <p style={{ color: '#a9a3c9', fontSize: 13 }}>선택한 조건에 맞는 프로필이 없어요.</p>
           )}
           {filteredPeople.map((p, index) => {
             const active = selected.includes(p.id)
@@ -375,7 +374,7 @@ export default function GuestBrowsePage() {
                 disabled={selected.length === 0} onClick={() => { setError(''); setStep('apply') }}>
                 선택한 {selected.length}명 관심 신청하기
               </button>
-              <p style={{ color: '#a9a3c9', fontSize: 11, textAlign: 'center' }}>관심 있는 후보를 원하는 만큼 선택해 주세요.</p>
+              <p style={{ color: '#a9a3c9', fontSize: 11, textAlign: 'center' }}>관심 있는 사람을 원하는 만큼 선택해 주세요.</p>
             </div>
           )}
         </>
