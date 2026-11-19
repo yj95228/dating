@@ -21,12 +21,15 @@ const errorFrom = async (error: unknown, fallback: string): Promise<string> => {
   } catch { /* ignore */ }
   return fallback
 }
-const statusLabel = (state: ConsentStatus) => {
-  if (state.deletionRequestedAt) return '🗑️ 전체 동의 철회 · 개인정보 삭제 요청'
-  if (state.public) return '✅ 정보 보관 및 프로필 공개 동의'
-  if (state.managementAgreed && state.decision === 'needs-review') return '⚠️ 내용 변경 · 다시 동의 필요'
-  if (state.managementAgreed) return '🗂️ 정보 보관만 동의 · 외부 비공개'
-  return state.decision === 'pending' ? '⏳ 동의 대기' : '🔒 전체 동의 미확인 · 비공개'
+const managementLabel = (state: ConsentStatus) => {
+  if (state.deletionRequestedAt) return '삭제 요청'
+  if (state.managementAgreed) return '동의 완료'
+  return state.decision === 'pending' ? '동의 대기' : '동의 없음'
+}
+const disclosureLabel = (state: ConsentStatus) => {
+  if (state.public) return '공개 중'
+  if (state.managementAgreed && state.decision === 'needs-review') return '재동의 필요'
+  return '비공개'
 }
 
 export default function GuestConsentAdmin({ personId, profileVersion }:
@@ -70,14 +73,6 @@ export default function GuestConsentAdmin({ personId, profileVersion }:
     await refresh()
     setNotice('개인 동의 링크를 복사했어요. 본인에게 직접 보내거나 중간 주선자를 통해 전달해 주세요.')
   })
-  const rotate = () => run(async () => {
-    if (!window.confirm('기존 동의 링크와 공개 동의를 무효화하고 새로운 링크를 만들까요?')) return
-    const result = await invoke({ action: 'admin-rotate', personId })
-    if (typeof result.url !== 'string') throw Error('새 동의 링크를 만들지 못했어요.')
-    await navigator.clipboard.writeText(result.url)
-    await refresh()
-    setNotice('기존 링크를 폐기하고 새 동의 링크를 복사했어요.')
-  })
   const stop = () => run(async () => {
     if (!window.confirm('이 프로필의 외부 공개를 중단할까요?')) return
     await invoke({ action: 'admin-hide', personId })
@@ -87,17 +82,36 @@ export default function GuestConsentAdmin({ personId, profileVersion }:
 
   return (
     <section style={{ ...S.card, padding: 16, marginBottom: 22 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-        gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <strong style={{ fontSize: 15 }}>🔐 개인정보 동의 관리</strong>
-        <span style={{ fontSize: 12, color: state?.public ? '#6ee7b7' : '#fcd34d' }}>
-          {state ? statusLabel(state) : '불러오는 중...'}
-        </span>
-      </div>
-      <p style={{ fontSize: 12, color: '#a9a3c9', lineHeight: 1.8, marginBottom: 14 }}>
-        이름·사진 등 정보 보관과 다른 사람에게 보여줄 프로필을 동의받아요.
-        공개에 동의하지 않으면 외부 목록에는 표시되지 않아요.
-      </p>
+      <strong style={{ display: 'block', fontSize: 15, marginBottom: 12 }}>
+        🔐 개인정보 동의 관리
+      </strong>
+      {state ? (
+        <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, padding: '10px 12px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.04)' }}>
+            <span style={{ fontSize: 13, color: '#c9c4df' }}>정보 보관·이용</span>
+            <strong style={{ fontSize: 13,
+              color: state.deletionRequestedAt ? '#fca5a5'
+                : state.managementAgreed ? '#6ee7b7' : '#a9a3c9' }}>
+              {managementLabel(state)}
+            </strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, padding: '10px 12px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.04)' }}>
+            <span style={{ fontSize: 13, color: '#c9c4df' }}>외부 프로필 공개</span>
+            <strong style={{ fontSize: 13,
+              color: state.public ? '#6ee7b7'
+                : state.managementAgreed && state.decision === 'needs-review' ? '#fcd34d'
+                : '#a9a3c9' }}>
+              {disclosureLabel(state)}
+            </strong>
+          </div>
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: '#a9a3c9', marginBottom: 14 }}>불러오는 중...</p>
+      )}
       {state?.deletionRequestedAt && (
         <p role="alert" style={{ color: '#fca5a5', fontSize: 12, lineHeight: 1.8 }}>
           당사자가 이름·사진 등 저장 정보의 삭제를 요청했어요.
@@ -110,17 +124,16 @@ export default function GuestConsentAdmin({ personId, profileVersion }:
           최근 응답: {new Date(state.decidedAt).toLocaleString('ko-KR')}
         </p>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <button type="button" disabled={busy} style={{ ...S.btnPrimary, flexGrow: 1 }}
+      <div style={{ display: 'grid',
+        gridTemplateColumns: state?.public ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)',
+        gap: 8, alignItems: 'stretch' }}>
+        <button type="button" disabled={busy} style={{ ...S.btnPrimary, minWidth: 0 }}
           onClick={() => void copyLink()}>
           🔗 {state?.hasLink ? '동의 링크 복사' : '동의 링크 만들기'}
         </button>
-        {state?.hasLink && (
+        {state?.public && (
           <button type="button" disabled={busy} className="btn-outline"
-            onClick={() => void rotate()}>링크 재발급</button>
-        )}
-        {state?.hasLink && (
-          <button type="button" disabled={busy} className="btn-outline"
+            style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}
             onClick={() => void stop()}>공개 중단</button>
         )}
       </div>
