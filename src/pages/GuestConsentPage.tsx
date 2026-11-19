@@ -221,7 +221,11 @@ export default function GuestConsentPage() {
                 <input type="checkbox" checked={shareAgreed} disabled={!useAgreed}
                   onChange={e => setShareAgreed(e.target.checked)} />
                 <span><strong>프로필 공개 동의 (선택)</strong>
-                  {' '}접속 코드를 받은 소개팅 참여자와 주선자에게 위 프로필을 보여주는 데 동의해요.</span>
+                  {' '}접속 코드를 받은 소개팅 참여자와 주선자에게 위 프로필을 보여주는 데 동의해요.
+                  <span style={{ display: 'block', marginTop: 4, fontSize: 12, color: '#a9a3c9' }}>
+                    ※ 공유 프로필에는 이름·사진이 포함되지 않아요.
+                  </span>
+                </span>
               </label>
               {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
               <button type="button" style={{ ...S.btnPrimary, width: '100%' }}
