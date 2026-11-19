@@ -215,6 +215,54 @@ const unlockGuest = async (admin: ReturnType<typeof adminClient>, request: Reque
   return response(headers, 200, { accessToken: await makeAccessSession(settings.version) })
 }
 
+// Only active candidates who explicitly approved the exact current public profile
+// can be sent through the anonymous guest API. This check runs on every browse
+// and on every interest submission (including old secret-link routes).
+const CONSENT_VERSION = 'guest-profile-v3'
+const MANAGEMENT_VERSION = 'guest-management-v1'
+type PublicPerson = {
+  id: number; gender: string; year: string | null; height: number | null;
+  location: string | null; job: string | null; is_direct: boolean;
+  ideal_type: string | null; note: string | null; sort_order: number | null
+}
+const publicProfile = (p: PublicPerson) => ({
+  gender: p.gender, year: p.year, height: p.height,
+  location: p.location, job: p.job, is_direct: Boolean(p.is_direct),
+  public_ideal_type: p.ideal_type ?? '', public_traits: p.note ?? '',
+})
+const profileSignature = async (p: PublicPerson) =>
+  await digest(CONSENT_VERSION + ':' + JSON.stringify(publicProfile(p)))
+const approvedPeople = async (admin: ReturnType<typeof adminClient>): Promise<PublicPerson[]> => {
+  const { data, error } = await admin.from('people')
+    .select('id,gender,year,height,location,job,is_direct,ideal_type,note,sort_order')
+    .eq('status', '활성')
+    .order('is_direct', { ascending: false })
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+  if (error) throw error
+  const people = (data ?? []) as PublicPerson[]
+  if (!people.length) return []
+  const { data: consents, error: consentError } = await admin.from('guest_profile_consents')
+    .select('person_id,decision,profile_signature,consented_at,management_agreed,management_consented_at,management_consent_version,deletion_requested_at')
+    .in('person_id', people.map(p => p.id))
+  if (consentError) throw consentError
+  const byPerson = new Map((consents ?? []).map(row => [Number(row.person_id), row]))
+  const checked = await Promise.all(people.map(async p => {
+    const consent = byPerson.get(p.id)
+    return consent?.decision === 'approved'
+      && consent.management_agreed === true
+      && consent.management_consent_version === MANAGEMENT_VERSION
+      && typeof consent.management_consented_at === 'string'
+      && Number.isFinite(Date.parse(consent.management_consented_at))
+      && consent.deletion_requested_at == null
+      && typeof consent.consented_at === 'string'
+      && Number.isFinite(Date.parse(consent.consented_at))
+      && consent.profile_signature === await profileSignature(p) ? p : null
+  }))
+  return checked.filter((p): p is PublicPerson => p !== null)
+}
+
 type Subscription = { endpoint: string; keys: { p256dh: string; auth: string } }
 const validSubscription = (input: unknown): input is Subscription => {
   if (!input || typeof input !== 'object') return false
@@ -283,23 +331,11 @@ Deno.serve(async request => {
     if (payload.action === 'browse') {
       const link = await activeLink(admin, payload.token)
       if (!link) return failure(headers, 404, '공유 링크가 만료되었거나 중지되었어요.')
-      // The share-token controls access. Every active person is available without
-      // a manual approval checkbox; no name, photos, match history or contact data.
-      const { data: people, error } = await admin.from('people')
-        .select('id,gender,year,height,location,job,is_direct,ideal_type,note,sort_order')
-        .eq('status', '활성')
-        .order('is_direct', { ascending: false })
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: true })
-        .order('id', { ascending: true })
-      if (error) return failure(headers, 503, '목록을 불러오지 못했어요.')
-      return response(headers, 200, { people: (people ?? []).map(
-        ({ id, gender, year, height, location, job, is_direct, ideal_type, note, sort_order }) => ({
-          id, gender, year, height, location, job, is_direct, sort_order,
-          public_ideal_type: ideal_type ?? '',
-          public_traits: note ?? '',
-        })
-      ) })
+      // Candidate consent, not the admin 'active' flag, authorizes disclosure.
+      const people = await approvedPeople(admin)
+      return response(headers, 200, { people: people.map(p => ({
+        id: p.id, sort_order: p.sort_order, ...publicProfile(p),
+      })) })
     }
 
     if (payload.action === 'submit') {
@@ -327,10 +363,9 @@ Deno.serve(async request => {
           ]))
         : null
       // Old frontends without a visitor ID still work with null fingerprint.
-      const { data: available } = await admin.from('people').select('id')
-        .in('id', personIds).eq('status', '활성')
-      if ((available ?? []).length !== personIds.length) {
-        return failure(headers, 400, '현재 신청할 수 없는 후보가 있어요.')
+      const approvedIds = new Set((await approvedPeople(admin)).map(p => p.id))
+      if (!personIds.every((id: number) => approvedIds.has(id))) {
+        return failure(headers, 400, '현재 공개 동의가 유효하지 않은 후보가 있어요. 목록을 새로고침해 주세요.')
       }
       const { data: created, error: insertError } = await admin.from('guest_interest_requests')
         .insert({ link_id: link.id, nickname, applicant_kind: kind,

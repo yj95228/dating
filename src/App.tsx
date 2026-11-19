@@ -10,6 +10,7 @@ import PeoplePage from '@/pages/PeoplePage'
 import PersonDetail from '@/pages/PersonDetail'
 import MatchesPage from '@/pages/MatchesPage'
 import GuestBrowsePage from '@/pages/GuestBrowsePage'
+import GuestConsentPage from '@/pages/GuestConsentPage'
 import AdminGuestPage from '@/pages/AdminGuestPage'
 
 function AuthGate() {
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/invite" element={<AcceptInvitePage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
+        <Route path="/consent/:token" element={<GuestConsentPage />} />
         <Route path="/i-need-money" element={<GuestBrowsePage />} />
         <Route path="/share" element={<GuestBrowsePage />} />
         <Route path="/share/:token" element={<GuestBrowsePage />} />

@@ -6,6 +6,7 @@ import PersonForm from '@/components/PersonForm'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import Lightbox from '@/components/Lightbox'
 import Avatar from '@/components/Avatar'
+import GuestConsentAdmin from '@/components/GuestConsentAdmin'
 import { S } from '@/styles'
 import { getAge, getPersonDisplayName, getPersonProfileTitle, RESULT_COLORS, RESULT_EMOJI } from '@/constants'
 import type { PersonFormState, PersonStatus } from '@/types'
@@ -207,6 +208,13 @@ export default function PersonDetail() {
           </div>
         </div>
       </div>
+
+      {canManage && (
+        <GuestConsentAdmin personId={person.id} profileVersion={JSON.stringify([
+          person.gender, person.year, person.height, person.location, person.job,
+          person.is_direct, person.ideal_type, person.note, person.status,
+        ])} />
+      )}
 
       {/* 메모 */}
       {person.note && (
