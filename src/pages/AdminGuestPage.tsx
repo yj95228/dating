@@ -57,28 +57,6 @@ const statusColors: Record<RequestStatus, string> = {
 }
 const PAGE_SIZE = 20
 
-const invoke = async (body: Record<string, unknown>) => {
-  const { data, error } = await supabase.functions.invoke('guest-share', { body })
-  if (error) {
-    const response = error.context
-    if (response instanceof Response) {
-      const status = response.status
-      let message = ''
-      try {
-        const failure: unknown = await response.clone().json()
-        if (failure && typeof failure === 'object' && 'error' in failure
-          && typeof failure.error === 'string') message = failure.error
-      } catch { /* Browser or gateway error may have no JSON body. */ }
-      if (status === 404) throw new Error('서버 함수를 찾지 못했어요. Supabase guest-share 배포를 확인해 주세요. (404)')
-      if (status === 401 || status === 403) throw new Error(message || '로그인 또는 관리자 권한을 확인해 주세요. (401/403)')
-      throw new Error(message || `서버 요청 실패 (HTTP ${status}). Supabase 함수와 APP_URL 설정을 확인해 주세요.`)
-    }
-    throw new Error('서버에 연결하지 못했어요. Preview 주소가 Supabase APP_URL 허용 목록에 있는지, guest-share 함수가 배포되어 있는지 확인해 주세요. 브라우저에서 차단된 경우 네트워크/CORS 오류일 수 있어요.')
-  }
-  if (data?.error) throw new Error(typeof data.error === 'string' ? data.error : '서버 요청이 실패했어요.')
-  return data as Record<string, unknown>
-}
-
 export default function AdminGuestPage() {
   const navigate = useNavigate()
   const { people, canManage } = useData()
