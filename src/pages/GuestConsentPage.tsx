@@ -52,6 +52,7 @@ export default function GuestConsentPage() {
   const [loaded, setLoaded] = useState<ConsentView | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [error, setError] = useState('')
   const [confirmedOwner, setConfirmedOwner] = useState(false)
   const [useAgreed, setUseAgreed] = useState(false)
@@ -110,6 +111,17 @@ export default function GuestConsentPage() {
     } finally { setBusy(false) }
   }
 
+  const copyProfileLink = async () => {
+    if (!loaded?.accessUrl) return
+    try {
+      await navigator.clipboard.writeText(loaded.accessUrl)
+      setLinkCopied(true)
+      setError('')
+    } catch {
+      setError('링크를 복사하지 못했어요. 브라우저에서 복사를 허용해 주세요.')
+    }
+  }
+
   const profile = loaded?.profile
   const approved = loaded?.decision === 'approved' && loaded.managementAgreed
   const isReview = loaded?.decision === 'needs-review'
@@ -126,39 +138,45 @@ export default function GuestConsentPage() {
         <div>
           <strong style={{ fontSize: 13 }}>① 주선자에게만 맡기기</strong>
           <p style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.8, margin: '4px 0 0' }}>
-            주선자가 내 정보를 보관하고 직접 소개팅을 연결해요. 공유 링크에는 내 프로필을 올리지 않아요.
+            주선자가 내 정보를 보관하고 직접 소개팅을 연결해요. 다른 사람에게 내 프로필은 공개되지 않아요.
           </p>
         </div>
         <div>
           <strong style={{ fontSize: 13 }}>② 소개팅 기회 넓히기</strong>
           <p style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.8, margin: '4px 0 0' }}>
-            운영자의 승인을 받았거나 개인 동의 링크를 통해 이용하는 소개팅 참여자와 주선자가 내 프로필을 볼 수 있어요.
+            운영자에게 이용 승인을 받은 방문자와 기존에 등록되어 개인정보 동의를 마친 사람이 내 프로필을 볼 수 있어요.
             개인 열람 링크가 다른 사람에게 전달되면 그 사람도 볼 수 있어요.
           </p>
         </div>
       </div>
       {loaded?.accessUrl && (
-        <section style={{ ...S.card, padding: 16, marginBottom: 18 }}>
+        <section style={{ ...S.card, padding: '20px 18px', marginBottom: 24 }}>
           <strong style={{ fontSize: 15 }}>다른 소개팅 프로필도 살펴보세요</strong>
-          <p style={{ color: '#a9a3c9', lineHeight: 1.7, fontSize: 12 }}>
+          <p style={{ color: '#a9a3c9', lineHeight: 1.85, fontSize: 12,
+            margin: '12px 0 18px' }}>
             별도 회원가입이나 관리자 승인 없이 이용할 수 있어요.
-            개인 링크는 다른 브라우저에서도 사용할 수 있으니 다른 사람에게 전달하지 마세요.
+            다른 브라우저에서도 이용할 수 있지만 링크를 다른 사람에게 전달하지는 마세요.
           </p>
           <a href={loaded.accessUrl} style={{ ...S.btnPrimary, display: 'block',
-            textAlign: 'center', textDecoration: 'none', marginTop: 12 }}>
+            textAlign: 'center', textDecoration: 'none', padding: '14px 16px', fontSize: 14 }}>
             소개팅 프로필 보기
           </a>
-          <button type="button" className="btn-outline"
-            onClick={() => { if (loaded.accessUrl) void navigator.clipboard.writeText(loaded.accessUrl) }}
-            style={{ width: '100%', marginTop: 9 }}>내 개인 링크 복사</button>
+          <button type="button" onClick={() => void copyProfileLink()}
+            style={{ width: '100%', padding: '13px 16px', fontSize: 14,
+              border: '1px solid rgba(196,181,253,0.6)', borderRadius: 10,
+              background: 'rgba(167,139,250,0.14)', color: '#ede9fe', fontWeight: 700,
+              fontFamily: 'inherit', cursor: 'pointer', marginTop: 12 }}>
+            {linkCopied ? '✓ 소개팅 프로필 링크 복사 완료' : '🔗 소개팅 프로필 링크 복사'}
+          </button>
         </section>
       )}
-      {loading ? <p style={{ color: '#a9a3c9' }}>동의 정보를 불러오는 중...</p> : !loaded ? (
-        <p role="alert" style={{ color: '#f87171' }}>{error}</p>
+      {loading ? <p role="status" style={{ color: '#a9a3c9', fontSize: 13,
+        lineHeight: 1.85, margin: '22px 0 26px' }}>동의 정보를 불러오는 중...</p> : !loaded ? (
+        <p role="alert" style={{ color: '#f87171', lineHeight: 1.85, margin: '18px 0' }}>{error}</p>
       ) : (
         <>
           <section style={{ ...S.card, padding: 18, marginBottom: 16 }}>
-            <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>👀 다른 사람에게 보여줄 프로필</h2>
+            <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>👀 다른 사람에게 공개될 프로필</h2>
             <p style={{ fontSize: 11, color: '#a9a3c9', lineHeight: 1.7, marginBottom: 14 }}>
               공개될 정보를 확인하고, 잘못된 부분은 동의 전에 수정 요청해 주세요.
             </p>
@@ -190,7 +208,7 @@ export default function GuestConsentPage() {
             <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9 }}>
               <p><strong>공개 목적:</strong> 소개팅 상대 확인과 관심 신청</p>
               <p><strong>보여줄 정보:</strong> 위에 표시된 성별, 출생연도, 키, 거주지, 직장/직업, 관계 구분, 이상형, 특징 중 입력된 항목이에요.</p>
-              <p><strong>누가 볼 수 있나요:</strong> 승인된 방문자와 개인 동의 링크로 이용하는 소개팅 참여자 및 주선자예요. 개인 열람 링크가 전달되면 다른 사람도 볼 수 있어요.</p>
+              <p><strong>누가 볼 수 있나요:</strong> 운영자에게 이용 승인을 받은 방문자와 기존에 등록되어 개인정보 동의를 마친 사람이에요. 개인 열람 링크가 전달되면 다른 사람도 볼 수 있어요.</p>
               <p><strong>공개 기간:</strong> 소개팅 주선이 필요한 동안이에요. 철회하거나 주선이 끝나면 공개를 중단하고, 내용이 바뀌면 다시 동의받아요.</p>
               <p><strong>거부하면:</strong> 소개팅 연결을 위한 내부 보관만 동의할 수 있고, 다른 사람에게는 공개하지 않아요. 공개 동의는 언제든 철회할 수 있어요.</p>
             </div>
@@ -221,7 +239,8 @@ export default function GuestConsentPage() {
                   ✅ 주선자에게만 정보를 맡긴 상태예요. 다른 사람에게는 공개되지 않아요.
                 </p>
               )}
-              {isReview && <p style={{ color: '#fcd34d', fontSize: 13 }}>
+              {isReview && <p role="status" style={{ color: '#fcd34d', fontSize: 13,
+                lineHeight: 1.75, margin: '5px 0 11px' }}>
                 내용이 변경됐어요. 확인하고 다시 선택해 주세요.
               </p>}
               <label style={{ display: 'flex', gap: 10, marginBottom: 14, fontSize: 13, lineHeight: 1.7 }}>
@@ -239,9 +258,9 @@ export default function GuestConsentPage() {
                 <input type="checkbox" checked={shareAgreed} disabled={!useAgreed}
                   onChange={e => setShareAgreed(e.target.checked)} />
                 <span><strong>프로필 공개 동의 (선택)</strong>
-                  {' '}접속 코드를 받은 소개팅 참여자와 주선자에게 위 프로필을 보여주는 데 동의해요.
+                  {' '}운영자에게 이용 승인을 받은 방문자와 개인정보 동의를 마친 기존 참여자에게 위 프로필을 보여주는 데 동의해요.
                   <span style={{ display: 'block', marginTop: 4, fontSize: 12, color: '#a9a3c9' }}>
-                    ※ 공유 프로필에는 이름·사진이 포함되지 않아요.
+                    ※ 다른 사람에게 공개되는 프로필에서는 이름·사진이 보이지 않아요.
                   </span>
                 </span>
               </label>
