@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 const source = readFileSync(new URL('../supabase/functions/guest-share/index.ts', import.meta.url), 'utf8')
-const schema = readFileSync(new URL('../supabase/migrations/20261120090000_guest_browser_binding.sql', import.meta.url), 'utf8')
+const schema = readFileSync(new URL('../supabase/migrations/20261120083756_guest_browser_binding.sql', import.meta.url), 'utf8')
 test('only browser credentials authorize browsing and submitting', () => {
   assert.match(source, /const personalPass = async[^]*?devicePass\(db, token\)/)
   assert.match(source, /await personalPass\(admin, payload.accessToken\)/)
