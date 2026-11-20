@@ -210,7 +210,7 @@ export default function PersonDetail() {
       </div>
 
       {canManage && (
-        <GuestConsentAdmin personId={person.id} profileVersion={JSON.stringify([
+        <GuestConsentAdmin key={person.id} personId={person.id} profileVersion={JSON.stringify([
           person.gender, person.year, person.height, person.location, person.job,
           person.is_direct, person.ideal_type, person.note, person.status,
         ])} />

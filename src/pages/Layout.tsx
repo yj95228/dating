@@ -1,14 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useData } from '@/hooks/useData'
 import type { User } from '@supabase/supabase-js'
 
 export default function Layout({ user, onSignOut }: { user: User; onSignOut: () => unknown }) {
-  const { matches, canManage, loading, initialized, error } = useData()
+  const { matches, canManage, role, loading, initialized, error } = useData()
   const location = useLocation()
   
   // 프로필 드롭다운 메뉴 상태 관리
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const profileButtonRef = useRef<HTMLButtonElement>(null)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showProfileMenu) return
+    const closeOnOutside = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (profileButtonRef.current?.contains(target) || profileMenuRef.current?.contains(target)) return
+      setShowProfileMenu(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowProfileMenu(false)
+        profileButtonRef.current?.focus()
+      }
+    }
+    document.addEventListener('pointerdown', closeOnOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showProfileMenu])
+
+  useEffect(() => {
+    setShowProfileMenu(false)
+  }, [location.pathname])
 
   const isDetail = location.pathname.startsWith('/people/') && location.pathname !== '/people'
 
@@ -30,6 +58,14 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
       <div style={{ fontSize: 12, color: '#5a5a80', fontFamily: "'Noto Sans KR', sans-serif" }}>.env 파일에 Supabase 키가 설정되어 있는지 확인해주세요</div>
     </div>
   )
+
+  const accountMenuActionStyle: React.CSSProperties = {
+    display: 'block', boxSizing: 'border-box', width: '100%',
+    padding: '10px 12px', borderRadius: 10, textAlign: 'center',
+    textDecoration: 'none', border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(255,255,255,0.04)', color: '#f1f0ff',
+    fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+  }
 
   const headerStyle: React.CSSProperties = {
     position: 'sticky', top: 0, zIndex: 50,
@@ -59,7 +95,13 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
               {user && (
                 <>
                   {/* 프로필 아바타 버튼 */}
-                  <button 
+                  <button
+                    ref={profileButtonRef}
+                    type="button"
+                    aria-label="계정 메뉴"
+                    aria-haspopup="menu"
+                    aria-expanded={showProfileMenu}
+                    aria-controls={showProfileMenu ? 'profile-account-menu' : undefined}
                     onClick={() => setShowProfileMenu(!showProfileMenu)}
                     style={{ 
                       width: 34, height: 34, borderRadius: '50%', 
@@ -75,14 +117,8 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
                   {/* 드롭다운 메뉴 */}
                   {showProfileMenu && (
                     <>
-                      {/* 백드롭 (메뉴 바깥 클릭 시 닫힘) */}
-                      <div 
-                        onClick={() => setShowProfileMenu(false)} 
-                        style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
-                      />
-                      
-                      {/* 실제 팝업 메뉴 컨테이너 */}
-                      <div style={{ 
+                      {/* 실제 팝업 메뉴: 바깥 클릭·터치는 문서 이벤트로 처리 */}
+                      <div id="profile-account-menu" ref={profileMenuRef} role="menu" style={{ 
                         position: 'absolute', top: 44, right: 0, zIndex: 50,
                         background: '#1a1830', border: '1px solid rgba(255,255,255,0.1)',
                         borderRadius: 14, padding: '14px', minWidth: 200,
@@ -92,19 +128,21 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
                         <div style={{ fontSize: 13, color: '#e0d0ff', marginBottom: 16, wordBreak: 'break-all', fontWeight: 500 }}>
                           {user.email}
                         </div>
-                        <button 
+                        {role === 'admin' && (
+                          <NavLink to="/settings" role="menuitem"
+                            onClick={() => setShowProfileMenu(false)}
+                            style={{ ...accountMenuActionStyle, marginBottom: 8 }}>
+                            ⚙️ 설정
+                          </NavLink>
+                        )}
+                        <button
+                          type="button"
+                          role="menuitem"
                           onClick={() => {
                             setShowProfileMenu(false)
                             onSignOut()
-                          }} 
-                          style={{ 
-                            width: '100%', padding: '10px 0', borderRadius: 10,
-                            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', 
-                            color: '#f1f0ff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                            transition: 'background 0.15s'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                          style={accountMenuActionStyle}
                         >
                           로그아웃
                         </button>

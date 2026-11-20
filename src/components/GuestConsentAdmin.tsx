@@ -28,13 +28,21 @@ const managementLabel = (state: ConsentStatus) => {
 }
 const disclosureLabel = (state: ConsentStatus) => {
   if (state.public) return '공개 중'
-  if (state.managementAgreed && state.decision === 'needs-review') return '재동의 필요'
+  if (state.hasLink && state.managementAgreed && state.decision === 'needs-review') return '재동의 필요'
   return '비공개'
 }
 
 export default function GuestConsentAdmin({ personId, profileVersion }:
   { personId: number; profileVersion: string }) {
-  const [state, setState] = useState<ConsentStatus | null>(null)
+  // Bind each status response to its requested person and profile.
+  // A previous person's status must never be painted during navigation.
+  const [loaded, setLoaded] = useState<{
+    personId: number
+    profileVersion: string
+    value: ConsentStatus
+  } | null>(null)
+  const state = loaded?.personId === personId && loaded.profileVersion === profileVersion
+    ? loaded.value : null
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -46,14 +54,21 @@ export default function GuestConsentAdmin({ personId, profileVersion }:
   }
   const refresh = async () => {
     const result = await invoke({ action: 'admin-status', personId })
-    setState(result as unknown as ConsentStatus)
+    setLoaded({ personId, profileVersion, value: result as unknown as ConsentStatus })
   }
   useEffect(() => {
     let active = true
     setError('')
+    setNotice('')
+    setLoaded(null)
     void invoke({ action: 'admin-status', personId }).then(result => {
-      if (active) setState(result as unknown as ConsentStatus)
-    }).catch(e => { if (active) setError(e instanceof Error ? e.message : '동의 상태를 확인하지 못했어요.') })
+      if (active) setLoaded({ personId, profileVersion, value: result as unknown as ConsentStatus })
+    }).catch(e => {
+      if (active) {
+        setLoaded(null)
+        setError(e instanceof Error ? e.message : '동의 상태를 확인하지 못했어요.')
+      }
+    })
     return () => { active = false }
     // Refresh when any disclosed profile field changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps

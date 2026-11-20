@@ -280,31 +280,68 @@ const visiblePeopleForVisitor = async (
   return hideMatchedProfiles(people, personId, matches ?? [])
 }
 
-// Only a server-verified personal bearer link can authorize reading profiles.
-const personalPass = async (admin: ReturnType<typeof adminClient>, token: unknown) => {
-  if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null
-  const { data: pass, error } = await admin.from('guest_access_passes')
-    .select('id,person_id,request_id,consent_nonce,revoked_at')
-    .eq('access_token_hash', await digest(token)).maybeSingle()
-  if (error || !pass || pass.revoked_at) return null
+// The long-lived personal link can START enrollment, but cannot browse once
+// browser binding is enabled. Each browser has its own random secret.
+type AccessPass = {
+  id: string; person_id: number | null; request_id: string | null;
+  consent_nonce: string | null; access_token_hash: string; revoked_at: string | null
+}
+const validSecret = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+
+const linkPass = async (db: ReturnType<typeof adminClient>, linkKey: unknown): Promise<AccessPass | null> => {
+  if (!validSecret(linkKey)) return null
+  const { data, error } = await db.from('guest_access_passes')
+    .select('id,person_id,request_id,consent_nonce,access_token_hash,revoked_at')
+    .eq('access_token_hash', await digest(linkKey)).maybeSingle()
+  if (error) throw error
+  return !data?.revoked_at ? data as AccessPass : null
+}
+const devicePass = async (db: ReturnType<typeof adminClient>, deviceKey: unknown): Promise<AccessPass | null> => {
+  if (!validSecret(deviceKey)) return null
+  const { data: device, error: deviceError } = await db.from('guest_access_devices')
+    .select('pass_id,revoked_at').eq('token_hash', await digest(deviceKey)).maybeSingle()
+  if (deviceError) throw deviceError
+  if (!device || device.revoked_at) return null
+  const { data: pass, error } = await db.from('guest_access_passes')
+    .select('id,person_id,request_id,consent_nonce,access_token_hash,revoked_at')
+    .eq('id', device.pass_id).maybeSingle()
+  if (error) throw error
+  return !pass?.revoked_at ? pass as AccessPass : null
+}
+const passVisitor = async (db: ReturnType<typeof adminClient>, pass: AccessPass | null) => {
+  if (!pass) return null
   if (pass.person_id) {
-    const { data: consent } = await admin.from('guest_profile_consents')
+    const { data: consent, error: consentError } = await db.from('guest_profile_consents')
       .select('secret_nonce,management_agreed,management_consent_version,deletion_requested_at')
       .eq('person_id', pass.person_id).maybeSingle()
+    if (consentError) throw consentError
     if (!consent || consent.secret_nonce !== pass.consent_nonce
         || !consent.management_agreed || consent.management_consent_version !== MANAGEMENT_VERSION
         || consent.deletion_requested_at) return null
-    const { data: person } = await admin.from('people').select('name')
-      .eq('id', pass.person_id).maybeSingle()
-    if (!person) return null
-    return { personId: Number(pass.person_id), name: person.name || '기존 등록 후보', kind: 'candidate' }
+    const { data: person, error: personError } = await db.from('people')
+      .select('name').eq('id', pass.person_id).maybeSingle()
+    if (personError) throw personError
+    return person
+      ? { personId: Number(pass.person_id), name: person.name || '기존 등록 후보', kind: 'candidate' }
+      : null
   }
-  const { data: request } = await admin.from('guest_access_requests')
+  if (!pass.request_id) return null
+  const { data: request, error } = await db.from('guest_access_requests')
     .select('status,visitor_name,applicant_kind').eq('id', pass.request_id)
-    .eq('access_token_hash', await digest(token)).maybeSingle()
+    .eq('access_token_hash', pass.access_token_hash).maybeSingle()
+  if (error) throw error
   return request?.status === 'approved'
-    ? { personId: null, name: request.visitor_name, kind: request.applicant_kind } : null
+    ? { personId: null, name: request.visitor_name, kind: request.applicant_kind }
+    : null
 }
+const personalPass = async (db: ReturnType<typeof adminClient>, token: unknown) =>
+  passVisitor(db, await devicePass(db, token))
+const pairingCode = () => {
+  const bytes = crypto.getRandomValues(new Uint32Array(1))
+  return String(bytes[0] % 1_000_000_000).padStart(9, '0')
+}
+
 
 type Subscription = { endpoint: string; keys: { p256dh: string; auth: string } }
 const validSubscription = (input: unknown): input is Subscription => {
@@ -356,6 +393,84 @@ Deno.serve(async request => {
   const admin = adminClient()
   try {
     if (payload.action === 'unlock') return failure(headers, 410, '이제 개인 링크로 접속해 주세요.')
+
+    // Browser authorization is kept separate from candidate disclosure consent.
+    // First-use enrollment trusts the first holder of the link: the recipient
+    // should open the link before forwarding it to anyone else.
+    if (payload.action === 'device-check' || payload.action === 'device-enroll'
+        || payload.action === 'device-start') {
+      const pass = await linkPass(admin, payload.linkKey)
+      if (!await passVisitor(admin, pass)) return failure(headers, 401, '유효한 개인 링크를 확인해 주세요.')
+      const bound = await devicePass(admin, payload.deviceKey)
+      if (payload.action === 'device-check') {
+        if (bound?.id === pass!.id) return response(headers, 200, { state: 'ready' })
+        const { data, error } = await admin.from('guest_access_devices')
+          .select('id').eq('pass_id', pass!.id).is('revoked_at', null).limit(1)
+        if (error) throw error
+        return response(headers, 200, { state: data?.length ? 'link' : 'first' })
+      }
+      if (!validSecret(payload.deviceKey)) return failure(headers, 400, '브라우저 인증 정보를 확인해 주세요.')
+      if (payload.action === 'device-enroll') {
+        const { data, error } = await admin.from('guest_access_devices')
+          .select('id').eq('pass_id', pass!.id).is('revoked_at', null).limit(1)
+        if (error) throw error
+        if (data?.length) return failure(headers, 409, '다른 브라우저가 먼저 등록됐어요. 새 브라우저 연결을 선택해 주세요.')
+        const { error: saveError } = await admin.from('guest_access_devices').insert({
+          pass_id: pass!.id, token_hash: await digest(payload.deviceKey), is_primary: true,
+        })
+        if (saveError?.code === '23505') return failure(headers, 409, '이미 등록된 브라우저가 있어요. 연결을 선택해 주세요.')
+        if (saveError) throw saveError
+        return response(headers, 200, { state: 'ready' })
+      }
+      if (bound?.id === pass!.id) return response(headers, 200, { state: 'ready' })
+      const { data: activeDevices, error: deviceError } = await admin.from('guest_access_devices')
+        .select('id').eq('pass_id', pass!.id).is('revoked_at', null).limit(1)
+      if (deviceError) throw deviceError
+      if (!activeDevices?.length) return failure(headers, 409, '첫 브라우저 등록이 필요해요.')
+      const now = new Date().toISOString()
+      const { count, error: rateError } = await admin.from('guest_device_pairings')
+        .select('id', { count: 'exact', head: true }).eq('pass_id', pass!.id)
+        .is('used_at', null).gt('expires_at', now)
+      if (rateError) throw rateError
+      if ((count ?? 0) >= 3) return failure(headers, 429, '연결 요청이 많아요. 잠시 후 다시 시도해 주세요.')
+      const code = pairingCode()
+      const { error: pairingError } = await admin.from('guest_device_pairings').insert({
+        pass_id: pass!.id, device_token_hash: await digest(payload.deviceKey),
+        approval_code_hash: await digest(pass!.id + ':' + code),
+        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      })
+      if (pairingError) throw pairingError
+      return response(headers, 200, { state: 'link', code, expiresInSeconds: 600 })
+    }
+
+    if (payload.action === 'device-verify') {
+      const pass = await devicePass(admin, payload.deviceKey)
+      return response(headers, 200, { state: await passVisitor(admin, pass) ? 'ready' : 'pending' })
+    }
+    if (payload.action === 'device-confirm') {
+      const pass = await devicePass(admin, payload.deviceKey)
+      if (!await passVisitor(admin, pass)) return failure(headers, 401, '기존 인증 브라우저에서 연결해 주세요.')
+      const code = payload.code
+      if (typeof code !== 'string' || !/^[0-9]{9}$/.test(code)) {
+        return failure(headers, 400, '9자리 연결번호를 입력해 주세요.')
+      }
+      const { data: pairing, error } = await admin.from('guest_device_pairings')
+        .select('id,device_token_hash').eq('pass_id', pass!.id)
+        .eq('approval_code_hash', await digest(pass!.id + ':' + code))
+        .is('used_at', null).gt('expires_at', new Date().toISOString()).maybeSingle()
+      if (error) throw error
+      if (!pairing) return failure(headers, 404, '연결번호가 만료됐거나 올바르지 않아요.')
+      // Consume atomically; the same pairing must never authorize two devices.
+      const { data: consumed, error: useError } = await admin.from('guest_device_pairings')
+        .update({ used_at: new Date().toISOString() }).eq('id', pairing.id)
+        .is('used_at', null).select('id').maybeSingle()
+      if (useError) throw useError
+      if (!consumed) return failure(headers, 409, '이미 사용한 연결번호예요.')
+      const { error: saveError } = await admin.from('guest_access_devices')
+        .insert({ pass_id: pass!.id, token_hash: pairing.device_token_hash, is_primary: false })
+      if (saveError) throw saveError
+      return response(headers, 200, { linked: true })
+    }
 
     const visitor = payload.action === 'browse' || payload.action === 'submit'
       ? await personalPass(admin, payload.accessToken) : null
@@ -420,6 +535,14 @@ Deno.serve(async request => {
 
     const actorId = await verifiedAdmin(request)
     if (!actorId) return failure(headers, 403, '관리자 로그인 후 사용할 수 있어요.')
+
+    // Administrator-only read-only snapshot of the same consent-checked public profiles.
+    if (payload.action === 'admin-preview') {
+      const people = await approvedPeople(admin)
+      return response(headers, 200, { people: people.map(p => ({
+        id: p.id, sort_order: p.sort_order, ...publicProfile(p),
+      })) })
+    }
 
     if (payload.action === 'get-access-status') {
       return response(headers, 200, { configured: Boolean(await guestSettings(admin)) })
