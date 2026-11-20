@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.98.0'
 import { corsHeaders as sdkCorsHeaders } from 'npm:@supabase/supabase-js@2.98.0/cors'
 import webpush from 'npm:web-push@3.6.7'
+import { hideMatchedProfiles } from './match-visibility.ts'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -263,6 +264,22 @@ const approvedPeople = async (admin: ReturnType<typeof adminClient>): Promise<Pu
   return checked.filter((p): p is PublicPerson => p !== null)
 }
 
+// A candidate sees neither their own profile nor profiles of people they have
+// ever matched with. Only a verified candidate link has a trusted person ID;
+// anonymous/referrer visitor passes cannot be mapped to an existing candidate.
+const visiblePeopleForVisitor = async (
+  admin: ReturnType<typeof adminClient>, personId: number | null,
+): Promise<PublicPerson[]> => {
+  const people = await approvedPeople(admin)
+  if (personId === null) return people
+  const { data: matches, error } = await admin.from('matches')
+    .select('male_id,female_id')
+    .or(`male_id.eq.${personId},female_id.eq.${personId}`)
+  // Fail closed: a database error must never expose an unfiltered list.
+  if (error) throw error
+  return hideMatchedProfiles(people, personId, matches ?? [])
+}
+
 // Only a server-verified personal bearer link can authorize reading profiles.
 const personalPass = async (admin: ReturnType<typeof adminClient>, token: unknown) => {
   if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null
@@ -348,7 +365,7 @@ Deno.serve(async request => {
 
     if (payload.action === 'browse') {
       // Candidate consent, not any access link, authorizes disclosure.
-      const people = await approvedPeople(admin)
+      const people = await visiblePeopleForVisitor(admin, visitor!.personId)
       return response(headers, 200, { people: people.map(p => ({
         id: p.id, sort_order: p.sort_order, ...publicProfile(p),
       })) })
@@ -377,9 +394,9 @@ Deno.serve(async request => {
           ]))
         : null
       // Old frontends without a visitor ID still work with null fingerprint.
-      const approvedIds = new Set((await approvedPeople(admin)).map(p => p.id))
+      const approvedIds = new Set((await visiblePeopleForVisitor(admin, visitor!.personId)).map(p => p.id))
       if (!personIds.every((id: number) => approvedIds.has(id))) {
-        return failure(headers, 400, '현재 공개 동의가 유효하지 않은 후보가 있어요. 목록을 새로고침해 주세요.')
+        return failure(headers, 400, '현재 선택할 수 없는 후보가 있어요. 목록을 새로고침해 주세요.')
       }
       const { data: created, error: insertError } = await admin.from('guest_interest_requests')
         .insert({ link_id: link.id, nickname, applicant_kind: kind,
