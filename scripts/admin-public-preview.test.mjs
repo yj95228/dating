@@ -10,6 +10,7 @@ const page = read('../src/pages/AdminPublicPreviewPage.tsx')
 const admin = read('../src/pages/AdminGuestPage.tsx')
 const settings = read('../src/pages/SettingsPage.tsx')
 const consent = read('../src/components/GuestConsentAdmin.tsx')
+const detail = read('../src/pages/PersonDetail.tsx')
 
 test('only verified admin can request preview', () => {
   const authorization = server.indexOf('if (!actorId) return failure(headers, 403')
@@ -40,4 +41,5 @@ test('admin notification settings belong in profile settings', () => {
 })
 test('switching candidates clears stale consent state', () => {
   assert.match(consent, /setState\(null\)/)
+  assert.match(detail, /<GuestConsentAdmin key={person.id}/)
 })
