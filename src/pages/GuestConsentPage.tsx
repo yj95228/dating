@@ -13,6 +13,41 @@ type Profile = {
   public_ideal_type: string
   public_traits: string
 }
+type ProfileDraft = {
+  year: string
+  height: string
+  location: string
+  job: string
+  public_ideal_type: string
+  public_traits: string
+}
+const draftFromProfile = (profile: Profile): ProfileDraft => ({
+  year: profile.year ?? '',
+  height: profile.height == null ? '' : String(profile.height),
+  location: profile.location ?? '',
+  job: profile.job ?? '',
+  public_ideal_type: profile.public_ideal_type,
+  public_traits: profile.public_traits,
+})
+const validatedDraft = (draft: ProfileDraft) => {
+  const year = draft.year.trim()
+  const heightText = draft.height.trim()
+  const location = draft.location.trim()
+  const job = draft.job.trim()
+  const ideal = draft.public_ideal_type.trim()
+  const traits = draft.public_traits.trim()
+  if (year && (!/^(19|20)\d{2}$/.test(year) || Number(year) > new Date().getFullYear()))
+    throw Error('출생연도는 1900~올해 사이의 4자리 숫자로 입력해 주세요.')
+  const height = heightText ? Number(heightText) : null
+  if (height !== null && (!Number.isFinite(height) || height < 80 || height > 250
+      || Math.round(height * 10) !== height * 10))
+    throw Error('키는 80~250cm 사이에서 소수점 첫째 자리까지만 입력해 주세요.')
+  if (location.length > 100 || job.length > 140 || ideal.length > 600 || traits.length > 1600)
+    throw Error('입력 내용이 너무 길어요. 내용을 조금 줄여 주세요.')
+  return { year: year || null, height,
+    location: location || null, job: job || null,
+    public_ideal_type: ideal, public_traits: traits }
+}
 type Decision = 'pending' | 'approved' | 'needs-review' | 'declined' | 'withdrawn'
 type ConsentView = {
   profile: Profile
@@ -38,6 +73,12 @@ const messageFrom = async (error: unknown, fallback: string) => {
   } catch { /* parse error */ }
   return fallback
 }
+const fieldStyle = {
+  display: 'block', width: '100%', background: 'rgba(255,255,255,0.055)',
+  color: '#f1f0ff', border: '1px solid rgba(196,181,253,0.4)',
+  borderRadius: 9, padding: '11px 12px', fontFamily: 'inherit',
+  fontSize: 14, lineHeight: 1.6, boxSizing: 'border-box' as const,
+}
 const detail = (label: string, value: string | number | null | undefined) =>
   value == null || value === '' ? null : (
     <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0,1fr)',
@@ -52,12 +93,13 @@ export default function GuestConsentPage() {
   // Read-only visual sample on this PR's Vercel preview host, never on production.
   const demoDecision = new URLSearchParams(window.location.search).get('demo')
   const demoMode = token === 'preview'
-    && (demoDecision === 'approved' || demoDecision === 'declined')
+    && (demoDecision === 'approved' || demoDecision === 'declined' || demoDecision === 'pending')
     && /^dating-git-[a-z0-9-]+-yj95228s-projects[.]vercel[.]app$/.test(window.location.hostname)
   const [loaded, setLoaded] = useState<ConsentView | null>(() => demoMode ? {
-    profile: { gender: '', year: null, height: null, location: null, job: null,
-      is_direct: false, public_ideal_type: '', public_traits: '' },
-    active: true, decision: demoDecision as 'approved' | 'declined',
+    profile: { gender: 'female', year: '1996', height: 165, location: '서울',
+      job: '사무직', is_direct: false, public_ideal_type: '운동을 좋아하는 사람',
+      public_traits: '취미: 산책, 영화' },
+    active: true, decision: demoDecision as 'approved' | 'declined' | 'pending',
     consentedAt: null, policyVersion: 'preview', previewSignature: '',
     managementSignature: '', managementSummary: { nameStored: false, photoCount: 0, fields: [] },
     managementAgreed: true, deletionRequested: false, accessUrl: '#preview',
@@ -70,6 +112,39 @@ export default function GuestConsentPage() {
   const [confirmedOwner, setConfirmedOwner] = useState(false)
   const [useAgreed, setUseAgreed] = useState(false)
   const [shareAgreed, setShareAgreed] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<ProfileDraft | null>(() => demoMode
+    ? draftFromProfile({ gender: 'female', year: '1996', height: 165,
+      location: '서울', job: '사무직', is_direct: false,
+      public_ideal_type: '운동을 좋아하는 사람', public_traits: '취미: 산책, 영화' })
+    : null)
+  const [draftError, setDraftError] = useState('')
+  const [draftTouched, setDraftTouched] = useState(false)
+
+  const changeDraft = (key: keyof ProfileDraft, value: string) => {
+    setDraftTouched(true)
+    setDraft(current => current ? { ...current, [key]: value } : current)
+  }
+  const editField = (key: keyof ProfileDraft, label: string,
+    multiline = false, maxLength = 1600) => (
+    <label key={key} style={{ display: 'block', fontSize: 13, fontWeight: 600,
+      lineHeight: 1.7, marginBottom: 12 }}>
+      {label}
+      {multiline ? (
+        <textarea value={draft?.[key] ?? ''} onChange={event => changeDraft(key, event.target.value)}
+          maxLength={maxLength} rows={key === 'public_traits' ? 4 : 3}
+          style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }}/>
+      ) : (
+        <input type={key === 'height' ? 'number' : 'text'}
+          inputMode={key === 'year' || key === 'height' ? 'numeric' : 'text'}
+          min={key === 'height' ? 80 : undefined}
+          max={key === 'height' ? 250 : undefined}
+          step={key === 'height' ? 0.1 : undefined}
+          value={draft?.[key] ?? ''} onChange={event => changeDraft(key,event.target.value)}
+          maxLength={maxLength} style={{ ...fieldStyle, marginTop: 5 }}/>
+      )}
+    </label>
+  )
 
   useEffect(() => {
     if (demoMode) return
@@ -84,6 +159,10 @@ export default function GuestConsentPage() {
         setError(await messageFrom(invokeError, '동의 링크를 확인하지 못했어요. 주선자에게 새 링크를 요청해 주세요.'))
       } else {
         setLoaded(data as ConsentView)
+        setDraft(draftFromProfile((data as ConsentView).profile))
+        setDraftTouched(false)
+        setEditing(false)
+        setDraftError('')
         setError('')
       }
       setLoading(false)
@@ -99,6 +178,24 @@ export default function GuestConsentPage() {
     if (busy || !loaded) return
     if ((decision === 'approved' || decision === 'declined') &&
         (!confirmedOwner || !useAgreed || shareAgreed !== (decision === 'approved'))) return
+    if ((decision === 'approved' || decision === 'declined') && editing) {
+      setError('프로필 수정 내용을 먼저 확인해 주세요.')
+      return
+    }
+    let editedProfile: ReturnType<typeof validatedDraft> | undefined
+    if ((decision === 'approved' || decision === 'declined') && draft && draftTouched) {
+      try {
+        const checked = validatedDraft(draft)
+        const existing = loaded.profile
+        if (checked.year !== existing.year || checked.height !== existing.height
+            || checked.location !== existing.location || checked.job !== existing.job
+            || checked.public_ideal_type !== existing.public_ideal_type
+            || checked.public_traits !== existing.public_traits) editedProfile = checked
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : '수정한 정보를 확인해 주세요.')
+        return
+      }
+    }
     if (decision === 'withdraw-all' &&
         !window.confirm('정보 보관 동의까지 철회하고 저장된 정보의 삭제를 요청할까요? 주선자가 확인하고 처리해요.')) return
     setBusy(true)
@@ -109,7 +206,8 @@ export default function GuestConsentPage() {
           confirmedOwner, useAgreed, shareAgreed,
           policyVersion: loaded.policyVersion,
           previewSignature: loaded.previewSignature,
-          managementSignature: loaded.managementSignature },
+          managementSignature: loaded.managementSignature,
+          ...(editedProfile ? { editedProfile } : {}) },
       })
       if (invokeError || !data?.saved) {
         setError(await messageFrom(invokeError, '처리하지 못했어요. 다시 시도해 주세요.'))
@@ -119,7 +217,19 @@ export default function GuestConsentPage() {
           managementAgreed: data.managementAgreed === true,
           deletionRequested: data.deletionRequested === true,
           consentedAt: data.decision === 'approved' ? new Date().toISOString() : null,
-          accessUrl: typeof data.accessUrl === 'string' ? data.accessUrl : null })
+          accessUrl: typeof data.accessUrl === 'string' ? data.accessUrl : null,
+          profile: data.profile && typeof data.profile === 'object'
+            ? data.profile as Profile : previous.profile,
+          previewSignature: typeof data.previewSignature === 'string'
+            ? data.previewSignature : previous.previewSignature,
+          managementSignature: typeof data.managementSignature === 'string'
+            ? data.managementSignature : previous.managementSignature,
+        })
+        if (data.profile && typeof data.profile === 'object')
+          setDraft(draftFromProfile(data.profile as Profile))
+        setDraftTouched(false)
+        setEditing(false)
+        setDraftError('')
         setConfirmedOwner(false)
         setUseAgreed(false)
         setShareAgreed(false)
@@ -147,6 +257,22 @@ export default function GuestConsentPage() {
   }
 
   const profile = loaded?.profile
+  const displayProfile = !editing && draftTouched && draft && profile
+    ? { ...profile,
+      year: draft.year.trim() || null,
+      height: draft.height.trim() && Number.isFinite(Number(draft.height))
+        ? Number(draft.height) : null,
+      location: draft.location.trim() || null,
+      job: draft.job.trim() || null,
+      public_ideal_type: draft.public_ideal_type.trim(),
+      public_traits: draft.public_traits.trim(),
+    } : profile
+  const hasEdits = Boolean(profile && displayProfile && (
+    profile.year !== displayProfile.year || profile.height !== displayProfile.height
+    || profile.location !== displayProfile.location || profile.job !== displayProfile.job
+    || profile.public_ideal_type !== displayProfile.public_ideal_type
+    || profile.public_traits !== displayProfile.public_traits
+  ))
   const approved = loaded?.decision === 'approved' && loaded.managementAgreed
   const isReview = loaded?.decision === 'needs-review'
   const internalOnly = loaded?.managementAgreed && !approved
@@ -233,45 +359,10 @@ export default function GuestConsentPage() {
         </button>
       )}
       <h1 style={{ fontSize: 23, marginBottom: 8 }}>💌 소개팅 프로필 공개 선택</h1>
-      <p style={{ fontSize: 13, color: '#c9c4df', lineHeight: 1.8, marginBottom: 16 }}>
-        소개팅을 연결하는 방법은 두 가지예요. 아래 내용을 확인한 뒤 동의 여부를 선택해 주세요.
+      <p style={{ fontSize: 13, color: '#c9c4df', lineHeight: 1.8, marginBottom: 18 }}>
+        내 정보를 주선자에게만 맡기거나, 선택적으로 다른 사람에게 프로필을 공개할 수 있어요.
+        프로필 내용을 확인·수정한 뒤 동의 여부를 결정해 주세요.
       </p>
-      <div style={{ display: 'grid', gap: 14, marginBottom: 23 }}>
-        <div>
-          <strong style={{ fontSize: 13 }}>① 주선자에게만 맡기기</strong>
-          <p style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.8, margin: '4px 0 0' }}>
-            주선자가 내 정보를 보관하고 직접 소개팅을 연결해요. 다른 사람에게 내 프로필은 공개되지 않아요.
-          </p>
-        </div>
-        <div>
-          <strong style={{ fontSize: 13 }}>② 소개팅 기회 넓히기</strong>
-          <p style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.8, margin: '4px 0 0' }}>
-            운영자에게 이용 승인을 받은 방문자와 기존에 등록되어 개인정보 동의를 마친 사람이 내 프로필을 볼 수 있어요.
-            개인 열람 링크가 다른 사람에게 전달되면 그 사람도 볼 수 있어요.
-          </p>
-        </div>
-      </div>
-      {loaded?.accessUrl && (
-        <section style={{ ...S.card, padding: '20px 18px', marginBottom: 24 }}>
-          <strong style={{ fontSize: 15 }}>다른 소개팅 프로필도 살펴보세요</strong>
-          <p style={{ color: '#a9a3c9', lineHeight: 1.85, fontSize: 12,
-            margin: '12px 0 18px' }}>
-            별도 회원가입이나 관리자 승인 없이 이용할 수 있어요.
-            다른 브라우저에서도 이용할 수 있지만 링크를 다른 사람에게 전달하지는 마세요.
-          </p>
-          <a href={loaded.accessUrl} style={{ ...S.btnPrimary, display: 'block',
-            textAlign: 'center', textDecoration: 'none', padding: '14px 16px', fontSize: 14 }}>
-            소개팅 프로필 보기
-          </a>
-          <button type="button" onClick={() => void copyProfileLink()}
-            style={{ width: '100%', padding: '13px 16px', fontSize: 14,
-              border: '1px solid rgba(196,181,253,0.6)', borderRadius: 10,
-              background: 'rgba(167,139,250,0.14)', color: '#ede9fe', fontWeight: 700,
-              fontFamily: 'inherit', cursor: 'pointer', marginTop: 12 }}>
-            {linkCopied ? '✓ 소개팅 프로필 링크 복사 완료' : '🔗 소개팅 프로필 링크 복사'}
-          </button>
-        </section>
-      )}
       {loading ? <p role="status" style={{ color: '#a9a3c9', fontSize: 13,
         lineHeight: 1.85, margin: '22px 0 26px' }}>동의 정보를 불러오는 중...</p> : !loaded ? (
         <p role="alert" style={{ color: '#f87171', lineHeight: 1.85, margin: '18px 0' }}>{error}</p>
@@ -279,43 +370,98 @@ export default function GuestConsentPage() {
         <>
           <section style={{ ...S.card, padding: 18, marginBottom: 16 }}>
             <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>👀 다른 사람에게 공개될 프로필</h2>
-            <p style={{ fontSize: 11, color: '#a9a3c9', lineHeight: 1.7, marginBottom: 14 }}>
-              공개될 정보를 확인하고, 잘못된 부분은 동의 전에 수정 요청해 주세요.
+            <p style={{ fontSize: 12, color: '#a9a3c9', lineHeight: 1.7, marginBottom: 14 }}>
+              틀린 부분은 직접 고칠 수 있어요. 고친 내용은 동의할 때 함께 저장돼요.
+              이름·사진과 매칭 정보는 이 화면에 표시되지 않아요.
             </p>
             {profile && (
               <>
                 {detail('성별', profile.gender === 'male' ? '남성' : '여성')}
-                {detail('출생연도', profile.year && profile.year + '년생')}
-                {detail('키', profile.height && profile.height + 'cm')}
-                {detail('거주 지역', profile.location)}
-                {detail('직장/직업', profile.job)}
                 {detail('관계 구분', profile.is_direct ? '주선자가 직접 아는 사이' : '건너건너 아는 사이')}
-                {detail('이상형', profile.public_ideal_type)}
-                {detail('특징', profile.public_traits)}
+                {editing ? (
+                  <>
+                    {editField('year', '출생연도 (예: 1996)', false, 4)}
+                    {editField('height', '키 (cm)', false, 6)}
+                    {editField('location', '거주 지역', false, 100)}
+                    {editField('job', '직장/직업', false, 140)}
+                    {editField('public_ideal_type', '이상형', true, 600)}
+                    {editField('public_traits', '특징', true, 1600)}
+                    <p style={{ fontSize: 11, color: '#a9a3c9', lineHeight: 1.7, marginBottom: 10 }}>
+                      성별·관계 구분·이름·사진은 주선자에게 수정 요청해 주세요.
+                    </p>
+                    {draftError && <p role="alert" style={{ color: '#f87171', fontSize: 12 }}>{draftError}</p>}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" className="btn-outline" disabled={busy}
+                        onClick={() => {
+                          if (!draft) return
+                          try { validatedDraft(draft); setEditing(false); setDraftError('') }
+                          catch (caught) { setDraftError(caught instanceof Error ? caught.message : '입력값을 확인해 주세요.') }
+                        }} style={{ flex: 1, padding: '10px' }}>수정 내용 확인</button>
+                      <button type="button" className="btn-outline" disabled={busy}
+                        onClick={() => { setDraft(draftFromProfile(profile)); setDraftTouched(false); setEditing(false); setDraftError('') }}
+                        style={{ padding: '10px' }}>수정 취소</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {detail('출생연도', displayProfile?.year && displayProfile.year + '년생')}
+                    {detail('키', displayProfile?.height && displayProfile.height + 'cm')}
+                    {detail('거주 지역', displayProfile?.location)}
+                    {detail('직장/직업', displayProfile?.job)}
+                    {detail('이상형', displayProfile?.public_ideal_type)}
+                    {detail('특징', displayProfile?.public_traits)}
+                    {hasEdits && <p role="status" style={{ color: '#a7f3d0', fontSize: 12, marginTop: 10 }}>
+                      ✓ 수정한 내용은 아래에서 동의할 때 함께 저장돼요.
+                    </p>}
+                    <button type="button" className="btn-outline" disabled={busy}
+                      onClick={() => { setDraftError(''); setEditing(true) }}
+                      style={{ width: '100%', marginTop: 12, padding: '10px 12px' }}>
+                      ✏️ 프로필 내용 수정하기
+                    </button>
+                  </>
+                )}
               </>
             )}
           </section>
-          <section style={{ ...S.card, padding: 18, marginBottom: 16 }}>
-            <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>🔒 개인정보 수집·이용 안내</h2>
-            <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9 }}>
-              <p><strong>정보 관리 주체:</strong> 소개팅 주선 노트 운영자(동의 링크를 관리하는 사람)</p>
-              <p><strong>이용 목적:</strong> 소개팅 상대 검토·연결 및 진행 상황 관리</p>
-              <p><strong>보관 정보:</strong> 이름, 사진, 성별, 출생연도, 키, 거주지, 직장/직업, 이상형, 특징, 소개 진행 상황과 매칭 이력 등. 사진은 별도 이미지 저장 서비스에 보관될 수 있어요.</p>
-              <p><strong>보관 기간:</strong> 소개팅 주선이 필요한 동안이에요. 동의를 철회하거나 주선이 끝나면 불필요한 정보는 주선자가 삭제를 처리해요.</p>
-              <p><strong>거부하면:</strong> 소개팅 정보 보관·관리에 참여하지 않아요. 이미 저장된 정보는 삭제를 요청할 수 있어요.</p>
-            </div>
+          <section style={{ ...S.card, padding: 16, marginBottom: 12 }}>
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: 15, fontWeight: 700, lineHeight: 1.7 }}>
+                🔒 개인정보 수집·이용 안내 (필수) · 자세히 보기
+              </summary>
+              <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9, marginTop: 12 }}>
+                <p><strong>정보 관리 주체:</strong> 소개팅 주선 노트 운영자(동의 링크를 관리하는 사람)</p>
+                <p><strong>이용 목적:</strong> 소개팅 상대 검토·연결 및 진행 상황 관리</p>
+                <p><strong>보관 정보:</strong> 이름, 사진, 성별, 출생연도, 키, 거주지, 직장/직업, 이상형, 특징, 소개 진행 상황과 매칭 이력 등. 사진은 별도 이미지 저장 서비스에 보관될 수 있어요.</p>
+                <p><strong>보관 기간:</strong> 소개팅 주선이 필요한 동안이에요. 동의를 철회하거나 주선이 끝나면 불필요한 정보는 주선자가 삭제를 처리해요.</p>
+                <p><strong>거부하면:</strong> 소개팅 정보 보관·관리에 참여하지 않아요. 이미 저장된 정보는 삭제를 요청할 수 있어요.</p>
+              </div>
+            </details>
+            <p style={{ fontSize: 12, color: '#c9c4df', lineHeight: 1.8, margin: '8px 0 0' }}>
+              소개팅 주선·관리를 위해 이름·사진·프로필·매칭 이력을 보관해요.
+              주선 목적이 끝나거나 철회하면 불필요한 정보는 정리해요.
+              거부할 수 있지만 주선에 참여할 수 없어요.
+            </p>
           </section>
-          <section style={{ ...S.card, padding: 18, marginBottom: 16 }}>
-            <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>🌐 프로필 공개 안내 (선택)</h2>
-            <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9 }}>
-              <p><strong>공개 목적:</strong> 소개팅 상대 확인과 관심 신청</p>
-              <p><strong>보여줄 정보:</strong> 위에 표시된 성별, 출생연도, 키, 거주지, 직장/직업, 관계 구분, 이상형, 특징 중 입력된 항목이에요.</p>
-              <p><strong>누가 볼 수 있나요:</strong> 운영자에게 이용 승인을 받은 방문자와 기존에 등록되어 개인정보 동의를 마친 사람이에요. 개인 열람 링크가 전달되면 다른 사람도 볼 수 있어요.</p>
-              <p><strong>공개 기간:</strong> 소개팅 주선이 필요한 동안이에요. 철회하거나 주선이 끝나면 공개를 중단하고, 내용이 바뀌면 다시 동의받아요.</p>
-              <p><strong>거부하면:</strong> 소개팅 연결을 위한 내부 보관만 동의할 수 있고, 다른 사람에게는 공개하지 않아요. 공개 동의는 언제든 철회할 수 있어요.</p>
-            </div>
+          <section style={{ ...S.card, padding: 16, marginBottom: 16 }}>
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: 15, fontWeight: 700, lineHeight: 1.7 }}>
+                🌐 프로필 공개 안내 (선택) · 자세히 보기
+              </summary>
+              <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9, marginTop: 12 }}>
+                <p><strong>공개 목적:</strong> 소개팅 상대 확인과 관심 신청</p>
+                <p><strong>보여줄 정보:</strong> 위에 표시된 성별, 출생연도, 키, 거주지, 직장/직업, 관계 구분, 이상형, 특징 중 입력된 항목이에요.</p>
+                <p><strong>누가 볼 수 있나요:</strong> 운영자에게 이용 승인을 받은 방문자와 기존에 등록되어 개인정보 동의를 마친 사람이에요. 개인 열람 링크가 전달되면 다른 사람도 볼 수 있어요.</p>
+                <p><strong>공개 기간:</strong> 소개팅 주선이 필요한 동안이에요. 철회하거나 주선이 끝나면 공개를 중단하고, 내용이 바뀌면 다시 동의받아요.</p>
+                <p><strong>거부하면:</strong> 소개팅 연결을 위한 내부 보관만 동의할 수 있고, 다른 사람에게는 공개하지 않아요. 공개 동의는 언제든 철회할 수 있어요.</p>
+              </div>
+            </details>
+            <p style={{ fontSize: 12, color: '#c9c4df', lineHeight: 1.8, margin: '8px 0 0' }}>
+              이름·사진을 제외한 프로필을 승인된 방문자·동의한 참여자에게
+              소개팅 검토 목적으로 제공해요. 주선 종료나 철회 시 공개를 멈춰요.
+              선택 동의를 거부해도 주선자에게만 정보를 맡길 수 있어요.
+            </p>
           </section>
-          {approved && !isReview ? (
+          {approved && !isReview && !hasEdits ? (
             <section style={{ ...S.card, padding: 18 }}>
               <h2 style={{ fontSize: 17 }}>✅ 프로필 공개에 동의했어요</h2>
               <p style={{ color: '#a9a3c9', fontSize: 13, lineHeight: 1.8 }}>
@@ -348,29 +494,23 @@ export default function GuestConsentPage() {
               <label style={{ display: 'flex', gap: 10, marginBottom: 14, fontSize: 13, lineHeight: 1.7 }}>
                 <input type="checkbox" checked={confirmedOwner}
                   onChange={e => setConfirmedOwner(e.target.checked)} />
-                <span>위 소개팅 정보가 제 정보인지 확인했어요.</span>
+                <span>위 프로필이 제 정보임을 확인했어요.</span>
               </label>
               <label style={{ display: 'flex', gap: 10, marginBottom: 14, fontSize: 13, lineHeight: 1.7 }}>
                 <input type="checkbox" checked={useAgreed}
                   onChange={e => { setUseAgreed(e.target.checked); if (!e.target.checked) setShareAgreed(false) }} />
-                <span><strong>내 정보 보관·이용 동의 (필수)</strong>
-                  {' '}위 안내에 따라 소개팅 연결을 위해 내 정보를 보관하고 이용하는 데 동의해요.</span>
+                <span>개인정보 보관·이용에 동의해요 <strong>(필수)</strong></span>
               </label>
               <label style={{ display: 'flex', gap: 10, marginBottom: 12, fontSize: 13, lineHeight: 1.7 }}>
                 <input type="checkbox" checked={shareAgreed} disabled={!useAgreed}
                   onChange={e => setShareAgreed(e.target.checked)} />
-                <span><strong>프로필 공개 동의 (선택)</strong>
-                  {' '}운영자에게 이용 승인을 받은 방문자와 개인정보 동의를 마친 기존 참여자에게 위 프로필을 보여주는 데 동의해요.
-                  <span style={{ display: 'block', marginTop: 4, fontSize: 12, color: '#a9a3c9' }}>
-                    ※ 다른 사람에게 공개되는 프로필에서는 이름·사진이 보이지 않아요.
-                  </span>
-                </span>
+                <span>프로필 공개에 동의해요 <strong>(선택)</strong></span>
               </label>
               {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
               <button type="button" style={{ ...S.btnPrimary, width: '100%' }}
-                disabled={busy || !confirmedOwner || !useAgreed}
+                disabled={busy || editing || !confirmedOwner || !useAgreed}
                 onClick={() => void decide(shareAgreed ? 'approved' : 'declined')}>
-                {busy ? '저장 중...' : shareAgreed
+                {busy ? '저장 중...' : hasEdits ? '수정 내용 저장하고 동의하기' : shareAgreed
                   ? '정보 보관 및 프로필 공개에 동의하기'
                   : '정보 보관에만 동의하기'}
               </button>
@@ -384,7 +524,7 @@ export default function GuestConsentPage() {
           {error && approved && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
           <p style={{ fontSize: 11, lineHeight: 1.75, color: '#a9a3c9', marginTop: 18 }}>
             이 링크는 다른 사람에게 전달하지 말아 주세요.
-            정보 수정이나 동의 철회에 문제가 있으면 주선자에게 알려주세요.
+            내용 수정이나 동의 철회에 문제가 있으면 주선자에게 알려주세요.
           </p>
         </>
       )}
