@@ -16,6 +16,25 @@ interface Interest {
   created_at: string
 }
 interface Choice { request_id: string; person_id: number }
+type AccessRequest = {
+  id: string; visitor_name: string; applicant_kind: 'candidate' | 'introducer'
+  referrer_id: string | null; referrer_note: string | null
+  status: 'pending' | 'approved' | 'rejected'; created_at: string
+}
+type Referrer = { id: string; name: string; url: string; revoked_at: string | null }
+const portalInvoke = async (body: Record<string, unknown>) => {
+  const { data, error } = await supabase.functions.invoke('guest-portal', { body })
+  if (error || data?.error) {
+    let message = typeof data?.error === 'string' ? data.error : '서버 요청에 실패했어요.'
+    const context = error?.context
+    if (context instanceof Response) {
+      try { const payload = await context.clone().json(); if (payload?.error) message = payload.error }
+      catch { /* use fallback */ }
+    }
+    throw Error(message)
+  }
+  return data as Record<string, unknown>
+}
 
 const statuses = [
   { value: 'new', label: '신규' },
@@ -70,11 +89,10 @@ export default function AdminGuestPage() {
   const { people, canManage } = useData()
   const [requests, setRequests] = useState<Interest[]>([])
   const [choices, setChoices] = useState<Choice[]>([])
-  const [latestUrl, setLatestUrl] = useState('')
-  const [codeConfigured, setCodeConfigured] = useState(false)
-  const [codeDraft, setCodeDraft] = useState('')
-  const [showCode, setShowCode] = useState(false)
-  const [codeSaved, setCodeSaved] = useState(false)
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
+  const [referrers, setReferrers] = useState<Referrer[]>([])
+  const [referrerDraft, setReferrerDraft] = useState('')
+  const [accessReloadKey, setAccessReloadKey] = useState(0)
   const [tab, setTab] = useState<RequestTab>('pending')
   const [searchDraft, setSearchDraft] = useState('')
   const [search, setSearch] = useState('')
@@ -153,24 +171,15 @@ export default function AdminGuestPage() {
   useEffect(() => {
     if (!canManage) return
     let active = true
-    void invoke({ action: 'get-access-status' }).then(result => {
-      if (active) setCodeConfigured(result.configured === true)
-    }).catch(() => {
-      if (active) setError('접속 코드 설정을 확인하지 못했어요.')
+    void portalInvoke({ action: 'admin-list' }).then(data => {
+      if (!active) return
+      setAccessRequests(Array.isArray(data.requests) ? data.requests as AccessRequest[] : [])
+      setReferrers(Array.isArray(data.referrers) ? data.referrers as Referrer[] : [])
+    }).catch(err => {
+      if (active) setError(err instanceof Error ? err.message : '접속 신청 목록을 확인하지 못했어요.')
     })
     return () => { active = false }
-  }, [canManage])
-
-  useEffect(() => {
-    if (!canManage) return
-    let alive = true
-    void invoke({ action: 'get-common-link', format: 'public' }).then(result => {
-      if (alive && typeof result.url === 'string') setLatestUrl(result.url)
-    }).catch(() => {
-      if (alive) setError('소개팅 링크를 조회하지 못했어요.')
-    })
-    return () => { alive = false }
-  }, [canManage])
+  }, [canManage, accessReloadKey])
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true)
@@ -180,11 +189,40 @@ export default function AdminGuestPage() {
     catch (err) { setError(err instanceof Error ? err.message : '처리하지 못했어요.') }
     finally { setBusy(false) }
   }
-  const createLink = () => run(async () => {
-    const result = await invoke({ action: 'create-common-link', format: 'public' })
-    if (typeof result.url !== 'string') throw Error('소개팅 링크를 받지 못했어요.')
-    setLatestUrl(result.url)
-    setNotice('소개팅 링크가 준비됐어요.')
+  const refreshAccess = () => setAccessReloadKey(value => value + 1)
+  const addReferrer = () => run(async () => {
+    if (!referrerDraft.trim()) throw Error('소개자 이름을 입력해 주세요.')
+    const data = await portalInvoke({ action: 'admin-add-referrer', name: referrerDraft.trim() })
+    setReferrerDraft('')
+    refreshAccess()
+    if (typeof data.url === 'string') {
+      await navigator.clipboard.writeText(data.url)
+      setNotice('소개자 링크를 만들고 복사했어요.')
+    }
+  })
+  const reviewAccess = (id: string, status: 'approved' | 'rejected') => run(async () => {
+    const data = await portalInvoke({ action: 'admin-review', id, status })
+    if (data.done !== true) throw Error('처리하지 못했어요.')
+    refreshAccess()
+    setNotice(status === 'approved'
+      ? '승인했어요. 신청자는 자신의 링크에서 바로 이용할 수 있어요.'
+      : '이용 신청을 거절했어요.')
+  })
+  const copyPersonalUrl = (id: string) => run(async () => {
+    const data = await portalInvoke({ action: 'admin-personal-url', id })
+    if (typeof data.url !== 'string') throw Error('개인 링크를 가져오지 못했어요.')
+    await navigator.clipboard.writeText(data.url)
+    setNotice('개인 링크를 복사했어요. 해당 이용자에게만 전달해 주세요.')
+  })
+  const revokeAccess = (id: string) => run(async () => {
+    await portalInvoke({ action: 'admin-revoke', id })
+    setNotice('해당 개인 링크를 중지했어요.')
+    refreshAccess()
+  })
+  const revokeReferrer = (id: string) => run(async () => {
+    await portalInvoke({ action: 'admin-revoke-referrer', id })
+    setNotice('소개 링크를 중지했어요.')
+    refreshAccess()
   })
   const updateRequest = (id: string, changes: Partial<Interest>) => run(async () => {
     const { error: updateError } = await supabase.from('guest_interest_requests')
@@ -195,31 +233,6 @@ export default function AdminGuestPage() {
       setPage(0)
       setReloadKey(value => value + 1)
     }
-  })
-  const generateAccessCode = () => {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
-    const bytes = crypto.getRandomValues(new Uint8Array(12))
-    setCodeDraft(Array.from(bytes, b => alphabet[b % alphabet.length]).join(''))
-    setShowCode(true)
-    setCodeSaved(false)
-  }
-  const saveAccessCode = () => run(async () => {
-    const code = codeDraft.trim()
-    if (code.length < 8 || code.length > 64) throw Error('접속 코드는 8~64글자로 정해 주세요.')
-    const response = await invoke({ action: 'set-access-code', code })
-    if (response.configured !== true) throw Error('접속 코드를 저장하지 못했어요.')
-    setCodeConfigured(true)
-    setCodeSaved(true)
-    setNotice('접속 코드를 저장했어요. 이 코드를 전달받은 사람만 후보를 볼 수 있어요.')
-  })
-  const copyAccessCode = () => run(async () => {
-    await navigator.clipboard.writeText(codeDraft.trim())
-    setNotice('접속 코드를 복사했어요.')
-  })
-  const copyLink = () => run(async () => {
-    if (!codeConfigured) throw Error('먼저 접속 코드를 설정해 주세요.')
-    await navigator.clipboard.writeText(latestUrl)
-    setNotice('소개팅 링크를 복사했어요.')
   })
   const changeTab = (next: RequestTab) => {
     setTab(next)
@@ -399,65 +412,99 @@ export default function AdminGuestPage() {
       </section>
 
       <section style={{ ...S.card, padding: 16, marginBottom: 16 }}>
-        <details open={!codeConfigured}>
-          <summary style={{ cursor: 'pointer', fontSize: 16, fontWeight: 700 }}>
-            🔐 접속 코드 {codeConfigured ? '설정됨' : '설정 필요'}
+        <h3 style={{ fontSize: 16, marginTop: 0 }}>🔐 비회원 이용 승인</h3>
+        <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
+          기존 후보는 각자 개인정보 동의 링크로 바로 이용하고,
+          새 방문자만 여기서 승인해요. 회원가입은 필요 없어요.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+          <input aria-label="일반 소개팅 링크" readOnly
+            value={window.location.origin + '/i-need-money'}
+            style={{ ...S.input, minWidth: 0, flex: 1, fontSize: 12 }} />
+          <button type="button" className="btn-outline"
+            onClick={() => void navigator.clipboard.writeText(window.location.origin + '/i-need-money')}>
+            링크 복사
+          </button>
+        </div>
+        <button type="button" className="btn-icon" onClick={refreshAccess} disabled={busy}>
+          ↻ 승인 목록 새로고침
+        </button>
+        {!accessRequests.some(item => item.status === 'pending') && (
+          <p style={{ fontSize: 12, color: '#a9a3c9' }}>대기 중인 이용 신청이 없어요.</p>
+        )}
+        {accessRequests.filter(item => item.status === 'pending').map(item => (
+          <div key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.1)',
+            padding: '13px 0' }}>
+            <strong style={{ fontSize: 14 }}>{item.visitor_name}</strong>
+            <p style={{ fontSize: 12, color: '#a9a3c9', lineHeight: 1.7 }}>
+              {item.applicant_kind === 'introducer' ? '중간 주선자' : '소개받을 사람'}
+              {' · '}
+              {referrers.find(ref => ref.id === item.referrer_id)?.name
+                || item.referrer_note || '소개 경로 미기재'}
+              {' · '}{new Date(item.created_at).toLocaleDateString('ko-KR')}
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" disabled={busy} style={{ ...S.btnPrimary, flex: 1 }}
+                onClick={() => void reviewAccess(item.id, 'approved')}>승인</button>
+              <button type="button" disabled={busy} className="btn-outline"
+                onClick={() => void reviewAccess(item.id, 'rejected')}>거절</button>
+            </div>
+          </div>
+        ))}
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#c4b5fd' }}>
+            처리된 방문자 {accessRequests.filter(item => item.status !== 'pending').length}명 보기
           </summary>
-          <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
-            모두에게 같은 코드를 알려주면 돼요. 너무 쉬운 문구는 피하고,
-            코드를 바꾸면 기존에 접속한 사람도 다시 입력해야 해요.
-          </p>
-          <label htmlFor="common-access-code" style={{ display: 'block',
-            fontSize: 12, marginBottom: 7 }}>공통 접속 코드 (8~64글자)</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input id="common-access-code" type={showCode ? 'text' : 'password'}
-              autoComplete="off" value={codeDraft} minLength={8} maxLength={64}
-              onChange={event => { setCodeDraft(event.target.value); setCodeSaved(false) }}
-              placeholder="접속 코드 입력 또는 자동 생성"
-              style={{ ...S.input, minWidth: 0, flex: 1 }} />
-            <button className="btn-outline" type="button"
-              onClick={() => setShowCode(value => !value)}>
-              {showCode ? '숨기기' : '보기'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-            <button type="button" className="btn-outline" onClick={generateAccessCode}>
-              자동 생성
-            </button>
-            <button type="button" className="btn-outline" disabled={!codeDraft.trim()}
-              onClick={() => void copyAccessCode()}>코드 복사</button>
-            <button type="button" style={{ ...S.btnPrimary, flexGrow: 1 }}
-              disabled={busy || codeDraft.trim().length < 8}
-              onClick={() => void saveAccessCode()}>
-              {codeConfigured ? '접속 코드 변경' : '접속 코드 저장'}
-            </button>
-          </div>
-          {codeSaved && <p role="status" style={{ color: '#a7f3d0', fontSize: 12 }}>
-            저장 완료! 이 코드를 공유해 주세요. 페이지를 나가면 다시 표시되지 않아요.
-          </p>}
+          {accessRequests.filter(item => item.status !== 'pending').map(item => (
+            <div key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.1)',
+              padding: '10px 0' }}>
+              <strong>{item.visitor_name}</strong>
+              <span style={{ fontSize: 12, color: '#a9a3c9', marginLeft: 8 }}>
+                {item.status === 'approved' ? '승인' : '거절'}
+                {' · '}{referrers.find(ref => ref.id === item.referrer_id)?.name || item.referrer_note}
+              </span>
+              {item.status === 'approved' && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button type="button" disabled={busy} className="btn-outline"
+                    onClick={() => void copyPersonalUrl(item.id)}>개인 링크 복사</button>
+                  <button type="button" disabled={busy} className="btn-outline"
+                    onClick={() => void revokeAccess(item.id)}>접근 중지</button>
+                </div>
+              )}
+            </div>
+          ))}
         </details>
       </section>
       <section style={{ ...S.card, padding: 16, marginBottom: 16 }}>
-        <h3 style={{ fontSize: 16, marginTop: 0 }}>🔗 소개팅 링크</h3>
-        {!codeConfigured && (
-          <p style={{ color: '#fcd34d', fontSize: 12 }}>먼저 위에서 접속 코드를 설정해 주세요.</p>
-        )}
-        {!latestUrl ? (
-          <button type="button" disabled={busy || !codeConfigured} style={{ ...S.btnPrimary, width: '100%' }}
-            onClick={() => void createLink()}>소개팅 링크 만들기</button>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input aria-label="소개팅 링크 주소" readOnly value={latestUrl}
-                onFocus={event => event.currentTarget.select()}
-                style={{ ...S.input, flex: 1, minWidth: 0, fontSize: 12 }} />
-              <button type="button" disabled={busy || !codeConfigured} onClick={copyLink}
-                style={{ ...S.btnPrimary, flexShrink: 0, padding: '11px 14px' }}>
-                📋 복사
-              </button>
-            </div>
-          </>
-        )}
+        <h3 style={{ fontSize: 16, marginTop: 0 }}>🔗 소개자별 초대 링크</h3>
+        <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
+          한 소개자가 여러 사람에게 같은 링크를 보낼 수 있어요. 링크에 만료일이나 횟수 제한은 없고,
+          링크로 들어온 방문자는 개별 승인해요.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input aria-label="소개자 이름" value={referrerDraft} maxLength={60}
+            onChange={event => setReferrerDraft(event.target.value)}
+            placeholder="소개자 이름" style={{ ...S.input, minWidth: 0, flex: 1 }} />
+          <button type="button" disabled={busy || !referrerDraft.trim()}
+            style={S.btnPrimary} onClick={() => void addReferrer()}>추가</button>
+        </div>
+        {referrers.map(ref => (
+          <div key={ref.id} style={{ borderTop: '1px solid rgba(255,255,255,0.1)',
+            marginTop: 12, paddingTop: 12 }}>
+            <strong style={{ fontSize: 13 }}>{ref.name}</strong>
+            <span style={{ fontSize: 11, color: '#a9a3c9', marginLeft: 8 }}>
+              {ref.revoked_at ? '중지됨' : '사용 중'}
+            </span>
+            {!ref.revoked_at && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn-outline"
+                  onClick={() => void navigator.clipboard.writeText(ref.url)}>초대 링크 복사</button>
+                <button type="button" className="btn-outline" disabled={busy}
+                  onClick={() => void revokeReferrer(ref.id)}>중지</button>
+              </div>
+            )}
+          </div>
+        ))}
       </section>
       <section style={{ ...S.card, padding: 16 }}>
         <details>
