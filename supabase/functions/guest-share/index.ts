@@ -404,6 +404,14 @@ Deno.serve(async request => {
     const actorId = await verifiedAdmin(request)
     if (!actorId) return failure(headers, 403, '관리자 로그인 후 사용할 수 있어요.')
 
+    // Administrator-only read-only snapshot of the same consent-checked public profiles.
+    if (payload.action === 'admin-preview') {
+      const people = await approvedPeople(admin)
+      return response(headers, 200, { people: people.map(p => ({
+        id: p.id, sort_order: p.sort_order, ...publicProfile(p),
+      })) })
+    }
+
     if (payload.action === 'get-access-status') {
       return response(headers, 200, { configured: Boolean(await guestSettings(admin)) })
     }

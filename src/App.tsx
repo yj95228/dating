@@ -12,6 +12,7 @@ import MatchesPage from '@/pages/MatchesPage'
 import GuestBrowsePage from '@/pages/GuestBrowsePage'
 import GuestConsentPage from '@/pages/GuestConsentPage'
 import AdminGuestPage from '@/pages/AdminGuestPage'
+import AdminPublicPreviewPage from '@/pages/AdminPublicPreviewPage'
 
 function AuthGate() {
   const { user, role, loading, signOut } = useAuth()
@@ -36,6 +37,7 @@ function AuthGate() {
           <Route path="people/:id" element={<PersonDetail />} />
           <Route path="matches" element={<MatchesPage />} />
           {role === "admin" && <Route path="requests" element={<AdminGuestPage />} />}
+          {role === "admin" && <Route path="public-preview" element={<AdminPublicPreviewPage />} />}
         </Route>
       </Routes>
     </DataProvider>
