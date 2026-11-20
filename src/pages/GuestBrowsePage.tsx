@@ -21,6 +21,10 @@ const errorMessage = (data: unknown, fallback: string) =>
     ? data.error : fallback
 
 const ACCESS_STORAGE = 'dating-guest-personal-v1'
+const DEVICE_STORAGE = 'dating-guest-device-v1'
+const newDeviceSecret = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('')
+
 const VISITOR_STORAGE = 'dating-guest-visitor-v1'
 const getVisitorId = () => {
   try {
@@ -35,6 +39,11 @@ const isUnauthorized = (error: unknown) => {
   if (!error || typeof error !== 'object' || !('context' in error)) return false
   const response = (error as { context?: unknown }).context
   return response instanceof Response && response.status === 401
+}
+const isConflict = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('context' in error)) return false
+  const response = (error as { context?: unknown }).context
+  return response instanceof Response && response.status === 409
 }
 const failureText = async (error: unknown, fallback: string) => {
   if (!error || typeof error !== 'object' || !('context' in error)) return fallback
@@ -64,6 +73,15 @@ export default function GuestBrowsePage() {
     }
     try { return localStorage.getItem(ACCESS_STORAGE) ?? '' } catch { return '' }
   })
+  const [deviceKey, setDeviceKey] = useState(() => {
+    try { return localStorage.getItem(DEVICE_STORAGE) ?? '' } catch { return '' }
+  })
+  const [browserState, setBrowserState] = useState<'checking' | 'link' | 'ready'>('checking')
+  const [pairCode, setPairCode] = useState('')
+  const [pairingKey, setPairingKey] = useState('')
+  const [approvalCode, setApprovalCode] = useState('')
+  const [pairBusy, setPairBusy] = useState(false)
+  const [pairNotice, setPairNotice] = useState('')
   const [needsCode, setNeedsCode] = useState(false)
   const [visitorName, setVisitorName] = useState('')
   const [referrerName, setReferrerName] = useState('')
@@ -82,37 +100,92 @@ export default function GuestBrowsePage() {
   }, [])
 
   useEffect(() => {
-    if (!accessToken) {
-      setPeople([])
-      setNeedsCode(true)
-      setAccessState('checking')
-      setLoading(false)
-      return
-    }
     let cancelled = false
     const load = async () => {
       setLoading(true)
+      setError('')
       try {
-        const { data: status, error: statusError } = await supabase.functions.invoke('guest-portal', {
-          body: { action: 'status', accessToken },
-        })
-        if (cancelled) return
-        if (statusError || !status?.status) {
-          setAccessToken('')
-          setNeedsCode(true)
-          try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* ignored */ }
-          setError('개인 링크를 확인하지 못했어요. 주선자에게 문의해 주세요.')
-          return
-        }
-        if (status.status !== 'approved') {
-          setAccessState(status.status === 'pending' ? 'pending' : 'rejected')
+        if (!accessToken && !deviceKey) {
           setPeople([])
-          setNeedsCode(false)
+          setBrowserState('checking')
+          setNeedsCode(true)
+          setAccessState('checking')
           return
         }
+        setNeedsCode(false)
+        if (accessToken) {
+          // Pending visitors still keep their original request link; it cannot browse.
+          const { data: status, error: statusError } = await supabase.functions.invoke('guest-portal', {
+            body: { action: 'status', accessToken },
+          })
+          if (cancelled) return
+          if (statusError || !status?.status) {
+            try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* ignored */ }
+            setAccessToken('')
+            setError('개인 링크를 확인하지 못했어요. 주선자에게 문의해 주세요.')
+            return
+          }
+          if (status.status !== 'approved') {
+            setAccessState(status.status === 'pending' ? 'pending' : 'rejected')
+            setPeople([])
+            setBrowserState('checking')
+            return
+          }
+          setAccessState('approved')
+          const { data: check, error: checkError } = await supabase.functions.invoke('guest-share', {
+            body: { action: 'device-check', linkKey: accessToken, deviceKey },
+          })
+          if (cancelled) return
+          if (checkError || !check?.state) throw Error(await failureText(checkError,
+            errorMessage(check, '브라우저 인증 상태를 확인하지 못했어요.')))
+          if (check.state === 'link') {
+            setBrowserState('link')
+            setPeople([])
+            return
+          }
+          if (check.state === 'first') {
+            const key = newDeviceSecret()
+            const { data: claimed, error: claimError } = await supabase.functions.invoke('guest-share', {
+              body: { action: 'device-enroll', linkKey: accessToken, deviceKey: key },
+            })
+            if (cancelled) return
+            if (claimError || claimed?.state !== 'ready') {
+              // A simultaneous first-open might have claimed the link first.
+              if (isConflict(claimError)) {
+                setBrowserState('link')
+                setPeople([])
+                return
+              }
+              throw Error(await failureText(claimError, errorMessage(claimed,
+                '이 브라우저를 등록하지 못했어요. 다시 시도해 주세요.')))
+            }
+            try {
+              localStorage.setItem(DEVICE_STORAGE, key)
+              localStorage.removeItem(ACCESS_STORAGE)
+            } catch { /* Browser may prohibit persistence. */ }
+            setDeviceKey(key)
+            setBrowserState('ready')
+            return
+          }
+          if (check.state !== 'ready') throw Error('브라우저 인증 상태가 올바르지 않아요.')
+        } else {
+          const { data: verified, error: verifyError } = await supabase.functions.invoke('guest-share', {
+            body: { action: 'device-verify', deviceKey },
+          })
+          if (cancelled) return
+          if (verifyError || verified?.state !== 'ready') {
+            try { localStorage.removeItem(DEVICE_STORAGE) } catch { /* ignored */ }
+            setDeviceKey('')
+            setPeople([])
+            setNeedsCode(true)
+            setAccessState('checking')
+            return
+          }
+        }
+        setBrowserState('ready')
         setAccessState('approved')
         const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-          body: { action: 'browse', token: 'public', accessToken },
+          body: { action: 'browse', token: 'public', accessToken: deviceKey },
         })
         if (cancelled) return
         if (isUnauthorized(invokeError)) {
@@ -126,13 +199,89 @@ export default function GuestBrowsePage() {
           setNeedsCode(false)
           setError('')
         }
-      } catch {
-        if (!cancelled) setError('연결을 확인하지 못했어요. 다시 접속해 주세요.')
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message
+          : '연결을 확인하지 못했어요. 다시 접속해 주세요.')
       } finally { if (!cancelled) setLoading(false) }
     }
     void load()
     return () => { cancelled = true }
-  }, [accessToken])
+  }, [accessToken, deviceKey])
+
+  useEffect(() => {
+    if (!pairCode || !pairingKey) return
+    let active = true
+    const timer = window.setInterval(() => {
+      void supabase.functions.invoke('guest-share', {
+        body: { action: 'device-verify', deviceKey: pairingKey },
+      }).then(({ data, error }) => {
+        if (!active || error || data?.state !== 'ready') return
+        try {
+          localStorage.setItem(DEVICE_STORAGE, pairingKey)
+          localStorage.removeItem(ACCESS_STORAGE)
+        } catch { /* ignored */ }
+        setPairCode('')
+        setDeviceKey(pairingKey)
+        setAccessToken('')
+        setBrowserState('checking')
+      })
+    }, 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [pairCode, pairingKey])
+
+  const startPairing = async () => {
+    if (!accessToken || pairBusy) return
+    setPairBusy(true)
+    setError('')
+    try {
+      const key = newDeviceSecret()
+      const { data, error: requestError } = await supabase.functions.invoke('guest-share', {
+        body: { action: 'device-start', linkKey: accessToken, deviceKey: key },
+      })
+      if (requestError || typeof data?.code !== 'string') {
+        throw Error(await failureText(requestError, errorMessage(data,
+          '새 브라우저 연결을 요청하지 못했어요.')))
+      }
+      setPairingKey(key)
+      setPairCode(data.code)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '연결번호를 만들지 못했어요.')
+    } finally { setPairBusy(false) }
+  }
+  const approvePairing = async () => {
+    if (!deviceKey || pairBusy) return
+    setPairBusy(true)
+    setPairNotice('')
+    try {
+      const { data, error: approvalError } = await supabase.functions.invoke('guest-share', {
+        body: { action: 'device-confirm', deviceKey, code: approvalCode.replace(/\s/g, '') },
+      })
+      if (approvalError || data?.linked !== true) {
+        throw Error(await failureText(approvalError, errorMessage(data,
+          '연결번호를 확인하지 못했어요.')))
+      }
+      setApprovalCode('')
+      setPairNotice('새 브라우저를 연결했어요. PC 화면도 곧 열려요.')
+    } catch (cause) {
+      setPairNotice(cause instanceof Error ? cause.message : '연결번호를 확인하지 못했어요.')
+    } finally { setPairBusy(false) }
+  }
+  const applyAsNewVisitor = () => {
+    try {
+      localStorage.removeItem(ACCESS_STORAGE)
+      localStorage.removeItem(DEVICE_STORAGE)
+    } catch { /* Browser storage is optional. */ }
+    window.history.replaceState(null, '', '/i-need-money')
+    setPairCode('')
+    setPairingKey('')
+    setDeviceKey('')
+    setAccessToken('')
+    setPeople([])
+    setError('')
+    setNeedsCode(true)
+    setBrowserState('checking')
+    setAccessState('checking')
+  }
 
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -166,7 +315,9 @@ export default function GuestBrowsePage() {
 
   const copyProfileLink = async () => {
     try {
-      await navigator.clipboard.writeText(personalUrl)
+      const link = accessState === 'pending' ? personalUrl : window.location.origin + '/i-need-money'
+      if (!link) throw Error('복사할 링크가 없어요.')
+      await navigator.clipboard.writeText(link)
       setLinkCopied(true)
       setError('')
     } catch {
@@ -180,12 +331,12 @@ export default function GuestBrowsePage() {
     setError('')
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-        body: { action: 'submit', token: 'public', accessToken,
+        body: { action: 'submit', token: 'public', accessToken: deviceKey,
           personIds: selected, visitorId },
       })
       if (isUnauthorized(invokeError)) {
-        try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* ignore */ }
-        setAccessToken('')
+        try { localStorage.removeItem(DEVICE_STORAGE) } catch { /* ignore */ }
+        setDeviceKey('')
         setAccessState('rejected')
         setError('이용할 수 없는 개인 링크예요. 주선자에게 문의해 주세요.')
       } else if (invokeError || !data?.submitted) {
@@ -269,6 +420,34 @@ export default function GuestBrowsePage() {
             {authBusy ? '신청 중...' : '이용 신청하기'}
           </button>
         </form>
+      ) : browserState === 'link' ? (
+        <section style={{ ...S.card, padding: 22, marginTop: 26 }}>
+          <h2 style={{ fontSize: 19, marginTop: 0 }}>🔐 새 브라우저에서 접속했어요</h2>
+          <p style={{ fontSize: 13, color: '#a9a3c9', lineHeight: 1.8 }}>
+            본인이 다른 기기에서 이용 중이라면 기존에 사용하던 브라우저에서 연결해 주세요.
+          </p>
+          {pairCode ? (
+            <div style={{ textAlign: 'center', margin: '16px 0' }}>
+              <p style={{ fontSize: 12, color: '#c4b5fd' }}>기존 브라우저에서 아래 번호를 입력하세요 (10분 유효)</p>
+              <strong style={{ fontSize: 26, letterSpacing: 3 }}>{pairCode}</strong>
+              <p style={{ fontSize: 12, color: '#a9a3c9' }}>인증이 완료되면 이 화면이 자동으로 전환돼요.</p>
+            </div>
+          ) : (
+            <button type="button" disabled={pairBusy} style={{ ...S.btnPrimary, width: '100%' }}
+              onClick={() => void startPairing()}>
+              {pairBusy ? '연결번호 만드는 중...' : '내 다른 브라우저 연결하기'}
+            </button>
+          )}
+          {error && <p role="alert" style={{ fontSize: 12, color: '#f87171' }}>{error}</p>}
+          <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+            <strong style={{ fontSize: 14 }}>다른 사람이 전달한 링크인가요?</strong>
+            <p style={{ fontSize: 12, color: '#a9a3c9', lineHeight: 1.8 }}>
+              이 링크는 전달한 사람의 개인 링크예요. 본인 이름으로 이용 신청할 수 있어요.
+            </p>
+            <button type="button" className="btn-outline" style={{ width: '100%' }}
+              onClick={applyAsNewVisitor}>내 이용 신청하기</button>
+          </div>
+        </section>
       ) : accessState === 'pending' || accessState === 'rejected' ? (
         <section style={{ ...S.card, padding: 24, marginTop: 26 }}>
           <h2 style={{ fontSize: 19 }}>
@@ -327,13 +506,29 @@ export default function GuestBrowsePage() {
             <button type="button" onClick={() => void copyProfileLink()}
               style={{ ...S.btnPrimary, display: 'block', width: '100%',
                 padding: '14px 16px', fontSize: 14 }}>
-              {linkCopied ? '✓ 소개팅 프로필 링크 복사 완료' : '🔗 소개팅 프로필 링크 복사'}
+              {linkCopied ? '✓ 친구 공유 링크 복사 완료' : '🔗 친구에게 소개팅 링크 공유'}
             </button>
             <p style={{ fontSize: 12, color: '#a9a3c9', lineHeight: 1.85,
               margin: '10px 2px 0' }}>
-              다른 브라우저에서도 이 링크로 볼 수 있어요. 다른 사람에게는 전달하지 말아 주세요.
+              친구에게는 개인 인증 정보가 없는 일반 소개팅 링크가 전달돼요.
             </p>
           </section>
+          <details style={{ ...S.card, padding: 14, marginBottom: 16 }}>
+            <summary style={{ fontSize: 13, cursor: 'pointer', color: '#c4b5fd' }}>
+              🔐 PC·다른 브라우저 연결
+            </summary>
+            <p style={{ fontSize: 12, lineHeight: 1.8, color: '#a9a3c9' }}>
+              PC에 표시된 9자리 연결번호를 이 브라우저에서 입력하면
+              PC에서도 같은 프로필을 볼 수 있어요.
+            </p>
+            <input aria-label="새 브라우저 연결번호" inputMode="numeric" maxLength={11}
+              value={approvalCode} onChange={event => setApprovalCode(event.target.value)}
+              placeholder="9자리 연결번호" style={{ ...S.input, marginBottom: 10 }} />
+            <button type="button" className="btn-outline"
+              disabled={pairBusy || !/^\d{9}$/.test(approvalCode.replace(/\s/g, ''))}
+              onClick={() => void approvePairing()}>새 브라우저 승인</button>
+            {pairNotice && <p role="status" style={{ fontSize: 12, color: '#c4b5fd' }}>{pairNotice}</p>}
+          </details>
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13,
             lineHeight: 1.85, margin: '16px 0 20px' }}>{error}</p>}
           {!error && people.length === 0 && (
