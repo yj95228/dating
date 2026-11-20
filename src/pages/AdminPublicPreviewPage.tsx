@@ -25,7 +25,12 @@ async function messageFrom(error: unknown): Promise<string> {
   try {
     const data: unknown = await response.clone().json()
     if (data && typeof data === 'object' && 'error' in data &&
-        typeof data.error === 'string') return data.error
+        typeof data.error === 'string') {
+      if (response.status === 400 && data.error.includes('알 수 없는 요청')) {
+        return '공개 프로필 미리보기 기능이 아직 Supabase 서버에 배포되지 않았어요. Preview는 운영 Supabase 서버를 사용하므로 서버 기능 배포 후 이용할 수 있어요.'
+      }
+      return data.error
+    }
   } catch { /* Ignore non-JSON error. */ }
   return response.status === 403 ? '관리자 권한을 확인해 주세요.' : fallback
 }

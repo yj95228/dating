@@ -43,3 +43,19 @@ test('switching candidates clears stale consent state', () => {
   assert.match(consent, /setState\(null\)/)
   assert.match(detail, /<GuestConsentAdmin key={person.id}/)
 })
+
+test('account dropdown aligns actions and closes on outside pointer or Escape', () => {
+  assert.match(nav, /accountMenuActionStyle/)
+  assert.match(nav, /textAlign: 'center'/)
+  assert.match(nav, /width: '100%'/)
+  assert.match(nav, /document\.addEventListener\('pointerdown', closeOnOutside\)/)
+  assert.match(nav, /document\.addEventListener\('keydown', closeOnEscape\)/)
+  assert.match(nav, /profileMenuRef\.current\?\.contains\(target\)/)
+  assert.match(nav, /aria-expanded={showProfileMenu}/)
+  assert.doesNotMatch(nav, /백드롭 \(메뉴 바깥 클릭 시 닫힘\)/)
+})
+
+test('preview explains unavailable Supabase action without blaming Vercel Preview', () => {
+  assert.match(page, /data\.error\.includes\('알 수 없는 요청'\)/)
+  assert.match(page, /Supabase 서버에 배포되지 않았어요/)
+})
