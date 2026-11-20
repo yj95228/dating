@@ -143,6 +143,35 @@ const linkResponse = async (request: Request, personId: number, consent: Consent
   const token = personId + '-' + await hmac(personId, consent.secret_nonce)
   return new URL('/consent/' + token, origin).href
 }
+// A candidate's consent link is already tied to a specific DB person ID.
+// Mint a separate, revocable browser-independent link only after management consent.
+const digest = async (raw: string) => {
+  const data = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
+  return Array.from(new Uint8Array(data), b => b.toString(16).padStart(2, '0')).join('')
+}
+const personalKey = async (id: number, nonce: string) => {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(serviceKey),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const bytes = await crypto.subtle.sign('HMAC', key,
+    new TextEncoder().encode('guest-candidate-v1:' + id + ':' + nonce))
+  return Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('')
+}
+const candidateAccessUrl = async (db: ReturnType<typeof adminClient>,
+  req: Request, personId: number, consent: Consent) => {
+  if (!consent.management_agreed || consent.management_consent_version !== MANAGEMENT_VERSION
+      || !consent.management_consented_at || consent.deletion_requested_at) return null
+  const key = await personalKey(personId, consent.secret_nonce)
+  const hash = await digest(key)
+  const { error } = await db.from('guest_access_passes').upsert({
+    person_id: personId, consent_nonce: consent.secret_nonce, access_token_hash: hash,
+  }, { onConflict: 'access_token_hash', ignoreDuplicates: true })
+  if (error) throw error
+  const { data: pass, error: readError } = await db.from('guest_access_passes')
+    .select('id,revoked_at').eq('access_token_hash', hash).maybeSingle()
+  if (readError || !pass || pass.revoked_at) return null
+  const origin = trustedOrigin(req) || parseOrigin(appUrl) || 'https://dating-note.vercel.app'
+  return origin + '/i-need-money#key=' + encodeURIComponent(key)
+}
 Deno.serve(async request => {
   const headers = cors(request)
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers })
@@ -186,6 +215,7 @@ Deno.serve(async request => {
             && consent.management_consent_version === MANAGEMENT_VERSION,
           deletionRequested: Boolean(consent.deletion_requested_at),
           consentedAt: isEffective ? consent.consented_at : null,
+          accessUrl: await candidateAccessUrl(admin, request, id, consent),
         })
       }
       const decision = body.decision
@@ -242,7 +272,15 @@ Deno.serve(async request => {
         .update(next).eq('person_id', id).eq('secret_nonce', consent.secret_nonce)
         .select('person_id').maybeSingle()
       if (error || !saved) return failure(headers, 503, '동의 상태를 저장하지 못했어요.')
+      if (decision === 'withdraw-all') {
+        await admin.from('guest_access_passes').update({ revoked_at: now })
+          .eq('person_id', id).is('revoked_at', null)
+      }
+      const accessUrl = decision === 'approved' || decision === 'declined'
+        ? await candidateAccessUrl(admin, request, id, (await readConsent(admin, id))!)
+        : null
       return output(headers, 200, {
+        accessUrl,
         saved: true,
         decision: decision === 'withdraw-all' ? 'withdrawn' : decision,
         managementAgreed: decision === 'approved' || decision === 'declined'
