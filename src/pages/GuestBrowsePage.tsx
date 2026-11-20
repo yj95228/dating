@@ -71,6 +71,7 @@ export default function GuestBrowsePage() {
   const [accessState, setAccessState] = useState<'checking' | 'pending' | 'approved' | 'rejected'>('checking')
   const [visitorId] = useState(getVisitorId)
   const [authBusy, setAuthBusy] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const personalUrl = accessToken
     ? window.location.origin + '/i-need-money#key=' + encodeURIComponent(accessToken) : ''
 
@@ -163,6 +164,16 @@ export default function GuestBrowsePage() {
         : [...current, id])
   }
 
+  const copyProfileLink = async () => {
+    try {
+      await navigator.clipboard.writeText(personalUrl)
+      setLinkCopied(true)
+      setError('')
+    } catch {
+      setError('링크를 복사하지 못했어요. 브라우저에서 복사를 허용해 주세요.')
+    }
+  }
+
   const submit = async () => {
     if (sending || !selected.length) return
     setSending(true)
@@ -215,7 +226,7 @@ export default function GuestBrowsePage() {
       {needsCode ? (
         <form onSubmit={unlock} style={{ ...S.card, padding: '24px 20px', marginTop: 26 }}>
           <h2 style={{ fontSize: 18, marginTop: 0 }}>소개팅 둘러보기</h2>
-          <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
+          <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7, marginBottom: 20 }}>
             회원가입 없이 이용할 수 있어요. 처음 방문했다면 간단히 신청해 주세요.
           </p>
           <label htmlFor="guest-name" style={{ display: 'block', fontSize: 13, marginBottom: 7 }}>이름</label>
@@ -248,12 +259,13 @@ export default function GuestBrowsePage() {
             입력한 이름과 소개 경로는 이용 승인과 소개팅 연결을 위해 운영자가 확인해요.
             다른 방문자에게 공개하지 않아요.
           </p>
-          <p style={{ color: '#c4b5fd', fontSize: 12 }}>
+          <p style={{ color: '#c4b5fd', fontSize: 12, fontWeight: 600,
+            lineHeight: 1.75, margin: '10px 0 0' }}>
             소개팅이 잘되면 주선자에게 소소한 보답도 환영이에요 😊
           </p>
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
           <button type="submit" disabled={!visitorName.trim() || (!inviteToken && !referrerName.trim()) || authBusy}
-            style={{ ...S.btnPrimary, width: '100%', marginTop: 16 }}>
+            style={{ ...S.btnPrimary, width: '100%', marginTop: 10 }}>
             {authBusy ? '신청 중...' : '이용 신청하기'}
           </button>
         </form>
@@ -262,23 +274,26 @@ export default function GuestBrowsePage() {
           <h2 style={{ fontSize: 19 }}>
             {accessState === 'pending' ? '💌 신청을 받았어요' : '이용 신청을 확인해 주세요'}
           </h2>
-          <p style={{ color: '#a9a3c9', lineHeight: 1.8, fontSize: 13 }}>
+          <p style={{ color: '#a9a3c9', lineHeight: 1.85, fontSize: 13, margin: '12px 0 22px' }}>
             {accessState === 'pending'
               ? '운영자가 확인하면 이 링크에서 바로 프로필을 볼 수 있어요.'
               : '현재 이 링크로는 이용할 수 없어요. 주선자에게 문의해 주세요.'}
           </p>
           {accessState === 'pending' && (
             <>
-              <p style={{ color: '#c4b5fd', fontSize: 12 }}>
-                브라우저를 바꿔도 이어서 확인하려면 아래 링크를 보관해 주세요.
+              <p style={{ color: '#c4b5fd', fontSize: 12, lineHeight: 1.85, margin: '0 0 14px' }}>
+                이 링크를 보관하면 다른 브라우저에서도 승인 상태를 확인할 수 있어요.
+                다른 사람에게는 전달하지 말아 주세요.
               </p>
-              <button type="button" className="btn-outline"
-                onClick={() => void navigator.clipboard.writeText(personalUrl)}>
-                내 접속 링크 복사
+              <button type="button" onClick={() => void copyProfileLink()}
+                style={{ ...S.btnPrimary, display: 'block', width: '100%', padding: '14px 16px', fontSize: 14 }}>
+                {linkCopied ? '✓ 소개팅 프로필 링크 복사 완료' : '🔗 소개팅 프로필 링크 복사'}
               </button>
               <button type="button" className="btn-outline"
-                onClick={() => { setAccessToken(current => current + ''); window.location.reload() }}
-                style={{ marginLeft: 8 }}>승인 상태 새로고침</button>
+                onClick={() => window.location.reload()}
+                style={{ display: 'block', marginTop: 14, width: '100%', padding: '11px 14px' }}>
+                승인 상태 새로고침
+              </button>
             </>
           )}
         </section>
@@ -290,7 +305,8 @@ export default function GuestBrowsePage() {
           <p style={{ color: '#a9a3c9', fontSize: 12 }}>이 화면에서는 별도 연락처를 수집하지 않아요.</p>
         </div>
       ) : loading ? (
-        <p style={{ color: '#a9a3c9' }}>프로필을 불러오는 중...</p>
+        <p role="status" style={{ color: '#a9a3c9', fontSize: 13, lineHeight: 1.85,
+          margin: '24px 0 26px', padding: '12px 2px' }}>프로필을 불러오는 중...</p>
       ) : step === 'apply' ? (
         <div style={{ ...S.card, padding: 20 }}>
           <button type="button" onClick={() => setStep('browse')} className="btn-icon">← 다시 선택하기</button>
@@ -307,14 +323,22 @@ export default function GuestBrowsePage() {
         </div>
       ) : (
         <>
-          <button type="button" className="btn-icon"
-            style={{ marginTop: 10, color: '#c4b5fd', fontSize: 12 }}
-            onClick={() => void navigator.clipboard.writeText(personalUrl)}>
-            🔗 내 개인 링크 복사 · 다른 브라우저에서도 이용
-          </button>
-          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
+          <section style={{ margin: '22px 0 26px' }}>
+            <button type="button" onClick={() => void copyProfileLink()}
+              style={{ ...S.btnPrimary, display: 'block', width: '100%',
+                padding: '14px 16px', fontSize: 14 }}>
+              {linkCopied ? '✓ 소개팅 프로필 링크 복사 완료' : '🔗 소개팅 프로필 링크 복사'}
+            </button>
+            <p style={{ fontSize: 12, color: '#a9a3c9', lineHeight: 1.85,
+              margin: '10px 2px 0' }}>
+              다른 브라우저에서도 이 링크로 볼 수 있어요. 다른 사람에게는 전달하지 말아 주세요.
+            </p>
+          </section>
+          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13,
+            lineHeight: 1.85, margin: '16px 0 20px' }}>{error}</p>}
           {!error && people.length === 0 && (
-            <p style={{ color: '#a9a3c9', fontSize: 13 }}>현재 공개된 프로필이 없어요.</p>
+            <p style={{ color: '#a9a3c9', fontSize: 13, lineHeight: 1.85,
+              margin: '20px 0 26px', padding: '8px 2px' }}>현재 공개된 프로필이 없어요.</p>
           )}
           {people.length > 0 && (
             <div style={{ margin: '16px 0 14px' }}>
