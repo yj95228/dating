@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { S } from '@/styles'
 
@@ -21,7 +20,7 @@ const errorMessage = (data: unknown, fallback: string) =>
   data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
     ? data.error : fallback
 
-const ACCESS_STORAGE = 'dating-guest-access-v1'
+const ACCESS_STORAGE = 'dating-guest-personal-v1'
 const VISITOR_STORAGE = 'dating-guest-visitor-v1'
 const getVisitorId = () => {
   try {
@@ -48,78 +47,112 @@ const failureText = async (error: unknown, fallback: string) => {
 }
 
 export default function GuestBrowsePage() {
-  // The public-looking path is only a nickname for the shared-code entry gate.
-  const { token = 'public' } = useParams()
+
   const [people, setPeople] = useState<GuestPerson[]>([])
   const [selected, setSelected] = useState<number[]>([])
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [step, setStep] = useState<'browse' | 'apply' | 'done'>('browse')
-  const [nickname, setNickname] = useState('')
-  const [applicantKind, setApplicantKind] = useState<'candidate' | 'introducer'>('candidate')
   const [error, setError] = useState('')
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('invite') ?? '')
   const [accessToken, setAccessToken] = useState(() => {
+    const fromLink = new URLSearchParams(window.location.hash.slice(1)).get('key') ?? ''
+    if (/^[0-9a-f]{64}$/.test(fromLink)) {
+      try { localStorage.setItem(ACCESS_STORAGE, fromLink) } catch { /* private browser */ }
+      return fromLink
+    }
     try { return localStorage.getItem(ACCESS_STORAGE) ?? '' } catch { return '' }
   })
   const [needsCode, setNeedsCode] = useState(false)
-  const [accessCode, setAccessCode] = useState('')
-  const [feeChecked, setFeeChecked] = useState(false)
+  const [visitorName, setVisitorName] = useState('')
+  const [referrerName, setReferrerName] = useState('')
+  const [applicantKind, setApplicantKind] = useState<'candidate' | 'introducer'>('candidate')
+  const [accessState, setAccessState] = useState<'checking' | 'pending' | 'approved' | 'rejected'>('checking')
   const [visitorId] = useState(getVisitorId)
   const [authBusy, setAuthBusy] = useState(false)
+  const personalUrl = accessToken
+    ? window.location.origin + '/i-need-money#key=' + encodeURIComponent(accessToken) : ''
+
+  useEffect(() => {
+    if (window.location.hash.startsWith('#key=')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+  }, [])
 
   useEffect(() => {
     if (!accessToken) {
       setPeople([])
       setNeedsCode(true)
+      setAccessState('checking')
       setLoading(false)
       return
     }
     let cancelled = false
     const load = async () => {
       setLoading(true)
-      const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-        body: { action: 'browse', token, accessToken },
-      })
-      if (cancelled) return
-      if (isUnauthorized(invokeError)) {
-        try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* Storage may be unavailable. */ }
-        setPeople([])
-        setNeedsCode(true)
-        setAccessToken('')
-        setError('')
-      } else if (invokeError || !Array.isArray(data?.people)) {
-        setError(await failureText(invokeError, errorMessage(data,
-          '프로필을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')))
-      } else {
-        setPeople(data.people as GuestPerson[])
-        setNeedsCode(false)
-        setError('')
-      }
-      setLoading(false)
+      try {
+        const { data: status, error: statusError } = await supabase.functions.invoke('guest-portal', {
+          body: { action: 'status', accessToken },
+        })
+        if (cancelled) return
+        if (statusError || !status?.status) {
+          setAccessToken('')
+          setNeedsCode(true)
+          try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* ignored */ }
+          setError('개인 링크를 확인하지 못했어요. 주선자에게 문의해 주세요.')
+          return
+        }
+        if (status.status !== 'approved') {
+          setAccessState(status.status === 'pending' ? 'pending' : 'rejected')
+          setPeople([])
+          setNeedsCode(false)
+          return
+        }
+        setAccessState('approved')
+        const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
+          body: { action: 'browse', token: 'public', accessToken },
+        })
+        if (cancelled) return
+        if (isUnauthorized(invokeError)) {
+          setAccessState('rejected')
+          setPeople([])
+        } else if (invokeError || !Array.isArray(data?.people)) {
+          setError(await failureText(invokeError, errorMessage(data,
+            '프로필을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')))
+        } else {
+          setPeople(data.people as GuestPerson[])
+          setNeedsCode(false)
+          setError('')
+        }
+      } catch {
+        if (!cancelled) setError('연결을 확인하지 못했어요. 다시 접속해 주세요.')
+      } finally { if (!cancelled) setLoading(false) }
     }
     void load()
     return () => { cancelled = true }
-  }, [token, accessToken])
+  }, [accessToken])
 
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (authBusy || !accessCode || !feeChecked) return
+    if (authBusy || !visitorName.trim() || (!inviteToken && !referrerName.trim())) return
     setAuthBusy(true)
     setError('')
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-        body: { action: 'unlock', code: accessCode },
+      const { data, error: invokeError } = await supabase.functions.invoke('guest-portal', {
+        body: { action: 'request', name: visitorName.trim(), kind: applicantKind,
+          referrerName: referrerName.trim(), inviteToken },
       })
       if (invokeError || typeof data?.accessToken !== 'string') {
-        throw new Error(await failureText(invokeError, errorMessage(data, '접속 코드를 확인해 주세요.')))
+        throw new Error(await failureText(invokeError,
+          errorMessage(data, '이용 신청을 저장하지 못했어요.')))
       }
-      try { localStorage.setItem(ACCESS_STORAGE, data.accessToken) } catch { /* Private browsing */ }
-      setAccessCode('')
-      setNeedsCode(false)
+      try { localStorage.setItem(ACCESS_STORAGE, data.accessToken) } catch { /* ignored */ }
       setAccessToken(data.accessToken)
+      setNeedsCode(false)
+      setAccessState('pending')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '접속 코드를 확인해 주세요.')
+      setError(reason instanceof Error ? reason.message : '신청을 저장하지 못했어요.')
     } finally { setAuthBusy(false) }
   }
 
@@ -131,19 +164,19 @@ export default function GuestBrowsePage() {
   }
 
   const submit = async () => {
-    if (!nickname.trim() || sending || !selected.length) return
+    if (sending || !selected.length) return
     setSending(true)
     setError('')
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('guest-share', {
-        body: { action: 'submit', token, accessToken, nickname: nickname.trim(),
-          applicantKind, personIds: selected, visitorId },
+        body: { action: 'submit', token: 'public', accessToken,
+          personIds: selected, visitorId },
       })
       if (isUnauthorized(invokeError)) {
         try { localStorage.removeItem(ACCESS_STORAGE) } catch { /* ignore */ }
         setAccessToken('')
-        setNeedsCode(true)
-        setError('접속 시간이 만료됐어요. 코드를 다시 입력해 주세요.')
+        setAccessState('rejected')
+        setError('이용할 수 없는 개인 링크예요. 주선자에게 문의해 주세요.')
       } else if (invokeError || !data?.submitted) {
         setError(await failureText(invokeError, errorMessage(data,
           '신청을 저장하지 못했어요. 다시 시도해 주세요.')))
@@ -181,24 +214,74 @@ export default function GuestBrowsePage() {
       </p>
       {needsCode ? (
         <form onSubmit={unlock} style={{ ...S.card, padding: '24px 20px', marginTop: 26 }}>
-          <label htmlFor="guest-access-code" style={{ display: 'block', fontSize: 13,
-            marginBottom: 8 }}>전달받은 접속 코드</label>
-          <input id="guest-access-code" type="password" autoComplete="off"
-            value={accessCode} onChange={event => setAccessCode(event.target.value)}
-            maxLength={64} placeholder="접속 코드 입력" style={S.input} />
-          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-            marginTop: 18, marginBottom: 16, fontSize: 14, color: '#c4b5fd' }}>
-            <input type="checkbox" checked={feeChecked}
-              onChange={event => setFeeChecked(event.target.checked)}
-              style={{ accentColor: '#a78bfa', width: 18, height: 18, flexShrink: 0 }} />
-            <span>소개팅 성사되면 주선비 입금 부탁드려요 🙇</span>
+          <h2 style={{ fontSize: 18, marginTop: 0 }}>소개팅 둘러보기</h2>
+          <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
+            회원가입 없이 이용할 수 있어요. 처음 방문했다면 간단히 신청해 주세요.
+          </p>
+          <label htmlFor="guest-name" style={{ display: 'block', fontSize: 13, marginBottom: 7 }}>이름</label>
+          <input id="guest-name" maxLength={40} autoComplete="name"
+            value={visitorName} onChange={event => setVisitorName(event.target.value)}
+            placeholder="운영자가 알아볼 수 있는 이름" style={S.input} />
+          <label htmlFor="guest-kind" style={{ display: 'block', fontSize: 13, margin: '16px 0 7px' }}>
+            이용 목적
           </label>
-          <button type="submit" disabled={!accessCode || !feeChecked || authBusy}
+          <select id="guest-kind" value={applicantKind}
+            onChange={event => setApplicantKind(event.target.value as 'candidate' | 'introducer')}
+            style={S.input}>
+            <option value="candidate">소개팅 상대를 찾고 있어요</option>
+            <option value="introducer">다른 사람을 소개해 주려고 해요</option>
+          </select>
+          {inviteToken ? (
+            <p style={{ fontSize: 12, color: '#c4b5fd', marginTop: 16 }}>
+              소개 링크를 통해 오셨네요. 소개해 준 사람은 자동으로 기록돼요.
+            </p>
+          ) : (
+            <>
+              <label htmlFor="guest-referrer" style={{ display: 'block', fontSize: 13,
+                margin: '16px 0 7px' }}>소개해 준 사람</label>
+              <input id="guest-referrer" maxLength={100} value={referrerName}
+                onChange={event => setReferrerName(event.target.value)}
+                placeholder="예: 김지영 (대학교 친구)" style={S.input} />
+            </>
+          )}
+          <p style={{ fontSize: 12, lineHeight: 1.7, color: '#a9a3c9' }}>
+            입력한 이름과 소개 경로는 이용 승인과 소개팅 연결을 위해 운영자가 확인해요.
+            다른 방문자에게 공개하지 않아요.
+          </p>
+          <p style={{ color: '#c4b5fd', fontSize: 12 }}>
+            소개팅이 잘되면 주선자에게 소소한 보답도 환영이에요 😊
+          </p>
+          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
+          <button type="submit" disabled={!visitorName.trim() || (!inviteToken && !referrerName.trim()) || authBusy}
             style={{ ...S.btnPrimary, width: '100%', marginTop: 16 }}>
-            {authBusy ? '확인 중...' : '소개팅 프로필 보기'}
+            {authBusy ? '신청 중...' : '이용 신청하기'}
           </button>
         </form>
+      ) : accessState === 'pending' || accessState === 'rejected' ? (
+        <section style={{ ...S.card, padding: 24, marginTop: 26 }}>
+          <h2 style={{ fontSize: 19 }}>
+            {accessState === 'pending' ? '💌 신청을 받았어요' : '이용 신청을 확인해 주세요'}
+          </h2>
+          <p style={{ color: '#a9a3c9', lineHeight: 1.8, fontSize: 13 }}>
+            {accessState === 'pending'
+              ? '운영자가 확인하면 이 링크에서 바로 프로필을 볼 수 있어요.'
+              : '현재 이 링크로는 이용할 수 없어요. 주선자에게 문의해 주세요.'}
+          </p>
+          {accessState === 'pending' && (
+            <>
+              <p style={{ color: '#c4b5fd', fontSize: 12 }}>
+                브라우저를 바꿔도 이어서 확인하려면 아래 링크를 보관해 주세요.
+              </p>
+              <button type="button" className="btn-outline"
+                onClick={() => void navigator.clipboard.writeText(personalUrl)}>
+                내 접속 링크 복사
+              </button>
+              <button type="button" className="btn-outline"
+                onClick={() => { setAccessToken(current => current + ''); window.location.reload() }}
+                style={{ marginLeft: 8 }}>승인 상태 새로고침</button>
+            </>
+          )}
+        </section>
       ) : step === 'done' ? (
         <div style={{ ...S.card, textAlign: 'center', padding: '38px 20px' }}>
           <div style={{ fontSize: 40 }}>💌</div>
@@ -212,36 +295,23 @@ export default function GuestBrowsePage() {
         <div style={{ ...S.card, padding: 20 }}>
           <button type="button" onClick={() => setStep('browse')} className="btn-icon">← 다시 선택하기</button>
           <h2 style={{ fontSize: 19 }}>💌 관심 신청하기</h2>
-          <p style={{ color: '#a9a3c9', fontSize: 13 }}>선택한 사람 {selected.length}명 · 신청 시 닉네임을 한 번만 입력해요.</p>
-          <label htmlFor="guest-kind" style={{ display: 'block', marginBottom: 10, fontSize: 13 }}>어떤 입장이세요?</label>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 22 }}>
-            {([{ value: 'candidate', label: '소개받고 싶어요' }, { value: 'introducer', label: '중간 주선자예요' }] as const).map(option => (
-              <button type="button" key={option.value}
-                onClick={() => setApplicantKind(option.value)}
-                style={{ ...S.btnPrimary, flex: 1, padding: '11px 5px',
-                  opacity: applicantKind === option.value ? 1 : 0.4 }}>
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <label htmlFor="guest-nickname" style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
-            관리자가 알아볼 수 있는 닉네임
-          </label>
-          <input id="guest-nickname" value={nickname} maxLength={30}
-            placeholder="예: 민수, 지영 친구, JY" onChange={e => setNickname(e.target.value)}
-            style={S.input} />
-          <p style={{ fontSize: 12, lineHeight: 1.7, color: '#a9a3c9' }}>
-            닉네임과 관심을 표시한 사람은 소개 요청을 확인하기 위해 주선자에게 전달돼요.
-            연락처는 받지 않으며 관리자가 별도로 연결합니다.
+          <p style={{ color: '#a9a3c9', fontSize: 13 }}>
+            선택한 사람 {selected.length}명에게 관심을 신청할까요?
+            최초 이용 신청에 사용한 이름으로 주선자에게 전달돼요.
           </p>
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
           <button type="button" style={{ ...S.btnPrimary, width: '100%', marginTop: 12 }}
-            disabled={!nickname.trim() || sending} onClick={submit}>
+            disabled={sending} onClick={submit}>
             {sending ? '신청 중...' : '관심 신청 보내기'}
           </button>
         </div>
       ) : (
         <>
+          <button type="button" className="btn-icon"
+            style={{ marginTop: 10, color: '#c4b5fd', fontSize: 12 }}
+            onClick={() => void navigator.clipboard.writeText(personalUrl)}>
+            🔗 내 개인 링크 복사 · 다른 브라우저에서도 이용
+          </button>
           {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
           {!error && people.length === 0 && (
             <p style={{ color: '#a9a3c9', fontSize: 13 }}>현재 공개된 프로필이 없어요.</p>

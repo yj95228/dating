@@ -25,6 +25,7 @@ type ConsentView = {
   managementSummary: { nameStored: boolean; photoCount: number; fields: string[] }
   managementAgreed: boolean
   deletionRequested: boolean
+  accessUrl: string | null
 }
 const messageFrom = async (error: unknown, fallback: string) => {
   if (!error || typeof error !== 'object' || !('context' in error)) return fallback
@@ -98,7 +99,8 @@ export default function GuestConsentPage() {
           decision: data.decision as Decision,
           managementAgreed: data.managementAgreed === true,
           deletionRequested: data.deletionRequested === true,
-          consentedAt: data.decision === 'approved' ? new Date().toISOString() : null })
+          consentedAt: data.decision === 'approved' ? new Date().toISOString() : null,
+          accessUrl: typeof data.accessUrl === 'string' ? data.accessUrl : null })
         setConfirmedOwner(false)
         setUseAgreed(false)
         setShareAgreed(false)
@@ -130,11 +132,27 @@ export default function GuestConsentPage() {
         <div>
           <strong style={{ fontSize: 13 }}>② 소개팅 기회 넓히기</strong>
           <p style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.8, margin: '4px 0 0' }}>
-            접속 코드를 받은 소개팅 참여자와 주선자도 공유 링크에서 내 프로필을 볼 수 있어요.
-            코드가 전달되면 다른 사람도 볼 수 있어요.
+            운영자의 승인을 받았거나 개인 동의 링크를 통해 이용하는 소개팅 참여자와 주선자가 내 프로필을 볼 수 있어요.
+            개인 열람 링크가 다른 사람에게 전달되면 그 사람도 볼 수 있어요.
           </p>
         </div>
       </div>
+      {loaded?.accessUrl && (
+        <section style={{ ...S.card, padding: 16, marginBottom: 18 }}>
+          <strong style={{ fontSize: 15 }}>다른 소개팅 프로필도 살펴보세요</strong>
+          <p style={{ color: '#a9a3c9', lineHeight: 1.7, fontSize: 12 }}>
+            별도 회원가입이나 관리자 승인 없이 이용할 수 있어요.
+            개인 링크는 다른 브라우저에서도 사용할 수 있으니 다른 사람에게 전달하지 마세요.
+          </p>
+          <a href={loaded.accessUrl} style={{ ...S.btnPrimary, display: 'block',
+            textAlign: 'center', textDecoration: 'none', marginTop: 12 }}>
+            소개팅 프로필 보기
+          </a>
+          <button type="button" className="btn-outline"
+            onClick={() => { if (loaded.accessUrl) void navigator.clipboard.writeText(loaded.accessUrl) }}
+            style={{ width: '100%', marginTop: 9 }}>내 개인 링크 복사</button>
+        </section>
+      )}
       {loading ? <p style={{ color: '#a9a3c9' }}>동의 정보를 불러오는 중...</p> : !loaded ? (
         <p role="alert" style={{ color: '#f87171' }}>{error}</p>
       ) : (
@@ -172,7 +190,7 @@ export default function GuestConsentPage() {
             <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9 }}>
               <p><strong>공개 목적:</strong> 소개팅 상대 확인과 관심 신청</p>
               <p><strong>보여줄 정보:</strong> 위에 표시된 성별, 출생연도, 키, 거주지, 직장/직업, 관계 구분, 이상형, 특징 중 입력된 항목이에요.</p>
-              <p><strong>누가 볼 수 있나요:</strong> 접속 코드를 받은 소개팅 참여자와 주선자예요. 코드를 다른 사람에게 전달하면 그 사람도 볼 수 있어요.</p>
+              <p><strong>누가 볼 수 있나요:</strong> 승인된 방문자와 개인 동의 링크로 이용하는 소개팅 참여자 및 주선자예요. 개인 열람 링크가 전달되면 다른 사람도 볼 수 있어요.</p>
               <p><strong>공개 기간:</strong> 소개팅 주선이 필요한 동안이에요. 철회하거나 주선이 끝나면 공개를 중단하고, 내용이 바뀌면 다시 동의받아요.</p>
               <p><strong>거부하면:</strong> 소개팅 연결을 위한 내부 보관만 동의할 수 있고, 다른 사람에게는 공개하지 않아요. 공개 동의는 언제든 철회할 수 있어요.</p>
             </div>

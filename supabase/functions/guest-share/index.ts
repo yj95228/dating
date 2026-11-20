@@ -218,7 +218,7 @@ const unlockGuest = async (admin: ReturnType<typeof adminClient>, request: Reque
 // Only active candidates who explicitly approved the exact current public profile
 // can be sent through the anonymous guest API. This check runs on every browse
 // and on every interest submission (including old secret-link routes).
-const CONSENT_VERSION = 'guest-profile-v3'
+const CONSENT_VERSION = 'guest-profile-v4'
 const MANAGEMENT_VERSION = 'guest-management-v1'
 type PublicPerson = {
   id: number; gender: string; year: string | null; height: number | null;
@@ -261,6 +261,32 @@ const approvedPeople = async (admin: ReturnType<typeof adminClient>): Promise<Pu
       && consent.profile_signature === await profileSignature(p) ? p : null
   }))
   return checked.filter((p): p is PublicPerson => p !== null)
+}
+
+// Only a server-verified personal bearer link can authorize reading profiles.
+const personalPass = async (admin: ReturnType<typeof adminClient>, token: unknown) => {
+  if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null
+  const { data: pass, error } = await admin.from('guest_access_passes')
+    .select('id,person_id,request_id,consent_nonce,revoked_at')
+    .eq('access_token_hash', await digest(token)).maybeSingle()
+  if (error || !pass || pass.revoked_at) return null
+  if (pass.person_id) {
+    const { data: consent } = await admin.from('guest_profile_consents')
+      .select('secret_nonce,management_agreed,management_consent_version,deletion_requested_at')
+      .eq('person_id', pass.person_id).maybeSingle()
+    if (!consent || consent.secret_nonce !== pass.consent_nonce
+        || !consent.management_agreed || consent.management_consent_version !== MANAGEMENT_VERSION
+        || consent.deletion_requested_at) return null
+    const { data: person } = await admin.from('people').select('name')
+      .eq('id', pass.person_id).maybeSingle()
+    if (!person) return null
+    return { personId: Number(pass.person_id), name: person.name || '기존 등록 후보', kind: 'candidate' }
+  }
+  const { data: request } = await admin.from('guest_access_requests')
+    .select('status,visitor_name,applicant_kind').eq('id', pass.request_id)
+    .eq('access_token_hash', await digest(token)).maybeSingle()
+  return request?.status === 'approved'
+    ? { personId: null, name: request.visitor_name, kind: request.applicant_kind } : null
 }
 
 type Subscription = { endpoint: string; keys: { p256dh: string; auth: string } }
@@ -312,26 +338,16 @@ Deno.serve(async request => {
 
   const admin = adminClient()
   try {
-    if (payload.action === 'unlock') return await unlockGuest(admin, request, headers, payload)
+    if (payload.action === 'unlock') return failure(headers, 410, '이제 개인 링크로 접속해 주세요.')
 
-    if (payload.action === 'browse' || payload.action === 'submit') {
-      const settings = await guestSettings(admin)
-      // Before an admin sets the shared code, preserve old secret-token links
-      // for the still-deployed main frontend. The guessable public path is
-      // never accessible without the shared code.
-      if (!settings && payload.token !== 'public') {
-        // The old secret URL continues to act as its own capability meanwhile.
-      } else if (!settings) {
-        return failure(headers, 503, '관리자가 아직 접속 코드를 설정하지 않았어요.')
-      } else if (!await validAccessSession(payload.accessToken, settings)) {
-        return failure(headers, 401, '접속 코드를 입력해 주세요.')
-      }
+    const visitor = payload.action === 'browse' || payload.action === 'submit'
+      ? await personalPass(admin, payload.accessToken) : null
+    if ((payload.action === 'browse' || payload.action === 'submit') && !visitor) {
+      return failure(headers, 401, '개인 링크를 확인해 주세요.')
     }
 
     if (payload.action === 'browse') {
-      const link = await activeLink(admin, payload.token)
-      if (!link) return failure(headers, 404, '공유 링크가 만료되었거나 중지되었어요.')
-      // Candidate consent, not the admin 'active' flag, authorizes disclosure.
+      // Candidate consent, not any access link, authorizes disclosure.
       const people = await approvedPeople(admin)
       return response(headers, 200, { people: people.map(p => ({
         id: p.id, sort_order: p.sort_order, ...publicProfile(p),
@@ -339,14 +355,12 @@ Deno.serve(async request => {
     }
 
     if (payload.action === 'submit') {
-      const link = await activeLink(admin, payload.token)
-      if (!link) return failure(headers, 404, '공유 링크가 만료되었거나 중지되었어요.')
-      const nickname = typeof payload.nickname === 'string' ? payload.nickname.trim() : ''
-      const kind = payload.applicantKind
+      const link = await activeLink(admin, 'public')
+      if (!link) return failure(headers, 503, '관리자가 소개팅 목록 링크를 준비해야 해요.')
+      const nickname = visitor!.name.slice(0, 30)
+      const kind = visitor!.kind
       const personIds = payload.personIds
-      if (nickname.length < 1 || nickname.length > 30 ||
-          (kind !== 'candidate' && kind !== 'introducer') ||
-          !Array.isArray(personIds) || !personIds.length || personIds.length > 500 ||
+      if (!Array.isArray(personIds) || !personIds.length || personIds.length > 500 ||
           !personIds.every((id: unknown) => Number.isSafeInteger(id) && Number(id) > 0) ||
           new Set(personIds).size !== personIds.length) {
         return failure(headers, 400, '닉네임과 관심 후보를 확인해 주세요.')
@@ -369,6 +383,7 @@ Deno.serve(async request => {
       }
       const { data: created, error: insertError } = await admin.from('guest_interest_requests')
         .insert({ link_id: link.id, nickname, applicant_kind: kind,
+          applicant_person_id: visitor!.personId,
           submission_fingerprint: submissionFingerprint }).select('id').single()
       if (insertError?.code === '23505' && submissionFingerprint) {
         return failure(headers, 409, '이미 같은 내용으로 신청했어요. 다른 후보를 선택해 주세요.')
