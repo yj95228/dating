@@ -6,3 +6,11 @@ verify_jwt = false
 [functions.guest-share]
 # Public guest tokens are checked in the handler; admin routes validate the signed-in user.
 verify_jwt = false
+
+[functions.guest-consent]
+# Consent link security is enforced inside the function; no account login needed.
+verify_jwt = false
+
+[functions.guest-portal]
+# Visitors submit and check personal requests without Supabase Auth.
+verify_jwt = false
