@@ -92,6 +92,11 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
                         <div style={{ fontSize: 13, color: '#e0d0ff', marginBottom: 16, wordBreak: 'break-all', fontWeight: 500 }}>
                           {user.email}
                         </div>
+                        <NavLink to="/settings" onClick={() => setShowProfileMenu(false)}
+                          style={{ display: 'block', padding: '10px 12px', borderRadius: 10,
+                            marginBottom: 8, textDecoration: 'none',
+                            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)',
+                            color: '#f1f0ff', fontSize: 13, fontWeight: 600 }}>⚙️ 설정</NavLink>
                         <button 
                           onClick={() => {
                             setShowProfileMenu(false)
@@ -119,7 +124,7 @@ export default function Layout({ user, onSignOut }: { user: User; onSignOut: () 
 
         {!isDetail && canManage && (
           <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 10px', display: 'flex', gap: 6 }}>
-            {[{ to: '/people', label: '인물' }, { to: '/matches', label: '매칭' }, { to: '/requests', label: '💌 신청' }, { to: '/public-preview', label: '👀 공개' }].map(({ to, label }) => (
+            {[{ to: '/people', label: '인물' }, { to: '/matches', label: '매칭' }, { to: '/requests', label: '💌 신청' }].map(({ to, label }) => (
               <NavLink key={to} to={to}
                 style={({ isActive }) => ({
                   flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 10,

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { S } from '@/styles'
 
@@ -30,6 +31,7 @@ async function messageFrom(error: unknown): Promise<string> {
 }
 
 export default function AdminPublicPreviewPage() {
+  const navigate = useNavigate()
   const [people, setPeople] = useState<PublicPerson[]>([])
   const [gender, setGender] = useState<Gender>('all')
   const [loading, setLoading] = useState(true)
@@ -72,6 +74,8 @@ export default function AdminPublicPreviewPage() {
 
   return (
     <main style={{ color: '#f1f0ff', paddingBottom: 24 }}>
+      <button type="button" className="btn-icon" onClick={() => navigate('/requests')}
+        style={{ marginBottom: 12 }}>← 신청 관리로 돌아가기</button>
       <h2 style={{ fontSize: 21, margin: '0 0 10px' }}>👀 공개 프로필 미리보기</h2>
       <p style={{ color: '#a9a3c9', fontSize: 13, lineHeight: 1.85, margin: '0 0 12px' }}>
         소개팅 공유 링크에서 보이는 공개 동의 프로필이에요.

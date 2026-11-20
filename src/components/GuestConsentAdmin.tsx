@@ -51,6 +51,7 @@ export default function GuestConsentAdmin({ personId, profileVersion }:
   useEffect(() => {
     let active = true
     setError('')
+    setState(null)
     void invoke({ action: 'admin-status', personId }).then(result => {
       if (active) setState(result as unknown as ConsentStatus)
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : '동의 상태를 확인하지 못했어요.') })

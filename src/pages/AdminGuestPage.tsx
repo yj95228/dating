@@ -78,11 +78,6 @@ const invoke = async (body: Record<string, unknown>) => {
   if (data?.error) throw new Error(typeof data.error === 'string' ? data.error : '서버 요청이 실패했어요.')
   return data as Record<string, unknown>
 }
-const base64Bytes = (base64: string) => {
-  const normalized = base64.replace(/-/g, '+').replace(/_/g, '/')
-  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='))
-  return Uint8Array.from(binary, ch => ch.charCodeAt(0))
-}
 
 export default function AdminGuestPage() {
   const navigate = useNavigate()
@@ -245,30 +240,6 @@ export default function AdminGuestPage() {
     setReloadKey(value => value + 1)
   }
 
-  const enablePush = () => run(async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-      throw Error('이 기기나 브라우저에서는 푸시 알림을 사용할 수 없어요.')
-    }
-    if (window.self !== window.top) {
-      throw Error('Vercel 미리보기가 다른 페이지 안에서 열렸어요. Preview 주소를 새 브라우저 탭으로 직접 열고 다시 시도해 주세요.')
-    }
-    if (Notification.permission === 'denied') {
-      throw Error('이 사이트의 알림 권한이 차단되어 있어요. 브라우저 주소창의 사이트 설정에서 알림을 허용한 뒤 다시 시도해 주세요.')
-    }
-    const permission = Notification.permission === 'granted'
-      ? 'granted' : await Notification.requestPermission()
-    if (permission !== 'granted') throw Error(
-      '알림 권한이 허용되지 않았어요. 브라우저 사이트 설정을 확인해 주세요. iPhone은 홈 화면에 추가한 PWA에서 허용할 수 있어요.')
-    const data = await invoke({ action: 'push-key' })
-    if (typeof data.publicKey !== 'string') throw Error('푸시 서버 키가 필요해요.')
-    const registration = await navigator.serviceWorker.ready
-    const existing = await registration.pushManager.getSubscription()
-    const subscription = existing ?? await registration.pushManager.subscribe({
-      userVisibleOnly: true, applicationServerKey: base64Bytes(data.publicKey),
-    })
-    await invoke({ action: 'subscribe', subscription: subscription.toJSON() })
-    setNotice('이 기기의 새 관심 신청 푸시 알림을 켰어요.')
-  })
 
   if (!canManage) return <p>관리자만 사용할 수 있어요.</p>
   const pending = counts.new + counts.checking
@@ -282,6 +253,10 @@ export default function AdminGuestPage() {
 
   return (
     <div style={{ paddingBottom: 70 }}>
+      <button type="button" className="btn-outline"
+        onClick={() => navigate('/public-preview')}
+        style={{ width: '100%', padding: '13px 14px', marginBottom: 20,
+          textAlign: 'left', fontWeight: 700 }}>👀 공개 프로필 보기 ›</button>
       <h2 style={{ fontSize: 20, marginTop: 0 }}>💌 관심 신청 관리</h2>
       {error && <p role="alert" style={{ color: '#f87171', fontSize: 13 }}>{error}</p>}
       {notice && <p role="status" style={{ color: '#c4b5fd', fontSize: 13 }}>{notice}</p>}
@@ -411,8 +386,15 @@ export default function AdminGuestPage() {
         )}
       </section>
 
-      <section style={{ ...S.card, padding: 16, marginBottom: 16 }}>
-        <h3 style={{ fontSize: 16, marginTop: 0 }}>🔐 비회원 이용 승인</h3>
+      <h3 style={{ fontSize: 15, color: '#c4b5fd', marginTop: 20 }}>신규 방문자 관리</h3>
+      <details style={{ ...S.card, padding: 16, marginBottom: 12 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 15, fontWeight: 700,
+          color: '#ddd6fe' }}>🔐 신규 방문자 승인
+          {accessRequests.filter(item => item.status === 'pending').length > 0 &&
+            <span style={{ marginLeft: 8, fontSize: 12, color: '#fcd34d' }}>
+              대기 {accessRequests.filter(item => item.status === 'pending').length}건
+            </span>}
+        </summary>
         <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
           기존 후보는 각자 개인정보 동의 링크로 바로 이용하고,
           새 방문자만 여기서 승인해요. 회원가입은 필요 없어요.
@@ -474,9 +456,10 @@ export default function AdminGuestPage() {
             </div>
           ))}
         </details>
-      </section>
-      <section style={{ ...S.card, padding: 16, marginBottom: 16 }}>
-        <h3 style={{ fontSize: 16, marginTop: 0 }}>🔗 소개자별 초대 링크</h3>
+      </details>
+      <details style={{ ...S.card, padding: 16, marginBottom: 16 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 15, fontWeight: 700,
+          color: '#ddd6fe' }}>🔗 초대 링크 관리</summary>
         <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
           한 소개자가 여러 사람에게 같은 링크를 보낼 수 있어요. 링크에 만료일이나 횟수 제한은 없고,
           링크로 들어온 방문자는 개별 승인해요.
@@ -505,20 +488,7 @@ export default function AdminGuestPage() {
             )}
           </div>
         ))}
-      </section>
-      <section style={{ ...S.card, padding: 16 }}>
-        <details>
-          <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 700,
-            color: '#ddd6fe' }}>🔔 알림 설정</summary>
-          <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.7 }}>
-            이 기기에서 새 신청 알림을 받고 싶을 때만 설정하면 돼요.
-          </p>
-          <button type="button" disabled={busy} onClick={enablePush}
-            style={{ ...S.btnPrimary, width: '100%' }}>
-            이 기기에서 푸시 알림 받기
-          </button>
-        </details>
-      </section>
+      </details>
     </div>
   )
 }

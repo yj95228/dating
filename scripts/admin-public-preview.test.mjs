@@ -7,6 +7,9 @@ const server = read('../supabase/functions/guest-share/index.ts')
 const app = read('../src/App.tsx')
 const nav = read('../src/pages/Layout.tsx')
 const page = read('../src/pages/AdminPublicPreviewPage.tsx')
+const admin = read('../src/pages/AdminGuestPage.tsx')
+const settings = read('../src/pages/SettingsPage.tsx')
+const consent = read('../src/components/GuestConsentAdmin.tsx')
 
 test('only verified admin can request preview', () => {
   const authorization = server.indexOf('if (!actorId) return failure(headers, 403')
@@ -20,10 +23,21 @@ test('only verified admin can request preview', () => {
 
 test('route and top navigation are admin-scoped', () => {
   assert.match(app, /role === "admin" && <Route path="public-preview"/)
-  assert.match(nav, /to: '\/public-preview', label: '👀 공개'/)
+  assert.match(admin, /navigate\('\/public-preview'\)/)
+  assert.doesNotMatch(nav, /to: '\/public-preview', label:/)
 })
 
 test('read-only preview does not use a guest token or submit interest requests', () => {
   assert.match(page, /action: 'admin-preview'/)
   assert.doesNotMatch(page, /accessToken|action: 'submit'|dating-guest-personal-v1/)
+})
+
+test('admin notification settings belong in profile settings', () => {
+  assert.match(nav, /to="\/settings"/)
+  assert.match(app, /role === "admin" && <Route path="settings"/)
+  assert.match(settings, /action: 'subscribe'/)
+  assert.doesNotMatch(admin, /onClick={enablePush}/)
+})
+test('switching candidates clears stale consent state', () => {
+  assert.match(consent, /setState\(null\)/)
 })
