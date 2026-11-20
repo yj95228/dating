@@ -132,8 +132,8 @@ export default function GuestConsentPage() {
         <div>
           <strong style={{ fontSize: 13 }}>② 소개팅 기회 넓히기</strong>
           <p style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.8, margin: '4px 0 0' }}>
-            접속 코드를 받은 소개팅 참여자와 주선자도 공유 링크에서 내 프로필을 볼 수 있어요.
-            코드가 전달되면 다른 사람도 볼 수 있어요.
+            운영자의 승인을 받았거나 개인 동의 링크를 통해 이용하는 소개팅 참여자와 주선자가 내 프로필을 볼 수 있어요.
+            개인 열람 링크가 다른 사람에게 전달되면 그 사람도 볼 수 있어요.
           </p>
         </div>
       </div>
@@ -190,7 +190,7 @@ export default function GuestConsentPage() {
             <div style={{ fontSize: 12, color: '#d3d0ea', lineHeight: 1.9 }}>
               <p><strong>공개 목적:</strong> 소개팅 상대 확인과 관심 신청</p>
               <p><strong>보여줄 정보:</strong> 위에 표시된 성별, 출생연도, 키, 거주지, 직장/직업, 관계 구분, 이상형, 특징 중 입력된 항목이에요.</p>
-              <p><strong>누가 볼 수 있나요:</strong> 접속 코드를 받은 소개팅 참여자와 주선자예요. 코드를 다른 사람에게 전달하면 그 사람도 볼 수 있어요.</p>
+              <p><strong>누가 볼 수 있나요:</strong> 승인된 방문자와 개인 동의 링크로 이용하는 소개팅 참여자 및 주선자예요. 개인 열람 링크가 전달되면 다른 사람도 볼 수 있어요.</p>
               <p><strong>공개 기간:</strong> 소개팅 주선이 필요한 동안이에요. 철회하거나 주선이 끝나면 공개를 중단하고, 내용이 바뀌면 다시 동의받아요.</p>
               <p><strong>거부하면:</strong> 소개팅 연결을 위한 내부 보관만 동의할 수 있고, 다른 사람에게는 공개하지 않아요. 공개 동의는 언제든 철회할 수 있어요.</p>
             </div>
