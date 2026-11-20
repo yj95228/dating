@@ -218,7 +218,7 @@ const unlockGuest = async (admin: ReturnType<typeof adminClient>, request: Reque
 // Only active candidates who explicitly approved the exact current public profile
 // can be sent through the anonymous guest API. This check runs on every browse
 // and on every interest submission (including old secret-link routes).
-const CONSENT_VERSION = 'guest-profile-v3'
+const CONSENT_VERSION = 'guest-profile-v4'
 const MANAGEMENT_VERSION = 'guest-management-v1'
 type PublicPerson = {
   id: number; gender: string; year: string | null; height: number | null;
