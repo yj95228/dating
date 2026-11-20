@@ -40,7 +40,9 @@ test('admin notification settings belong in profile settings', () => {
   assert.doesNotMatch(admin, /onClick={enablePush}/)
 })
 test('switching candidates clears stale consent state', () => {
-  assert.match(consent, /setState\(null\)/)
+  assert.ok(consent.includes('setLoaded(null)'))
+  assert.ok(consent.includes('loaded?.personId === personId'))
+  assert.ok(consent.includes('loaded.profileVersion === profileVersion'))
   assert.match(detail, /<GuestConsentAdmin key={person.id}/)
 })
 
