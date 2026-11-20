@@ -49,16 +49,30 @@ const detail = (label: string, value: string | number | null | undefined) =>
 
 export default function GuestConsentPage() {
   const { token = '' } = useParams()
-  const [loaded, setLoaded] = useState<ConsentView | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Read-only visual sample on this PR's Vercel preview host, never on production.
+  const demoDecision = new URLSearchParams(window.location.search).get('demo')
+  const demoMode = token === 'preview'
+    && (demoDecision === 'approved' || demoDecision === 'declined')
+    && /^dating-git-[a-z0-9-]+-yj95228s-projects[.]vercel[.]app$/.test(window.location.hostname)
+  const [loaded, setLoaded] = useState<ConsentView | null>(() => demoMode ? {
+    profile: { gender: '', year: null, height: null, location: null, job: null,
+      is_direct: false, public_ideal_type: '', public_traits: '' },
+    active: true, decision: demoDecision as 'approved' | 'declined',
+    consentedAt: null, policyVersion: 'preview', previewSignature: '',
+    managementSignature: '', managementSummary: { nameStored: false, photoCount: 0, fields: [] },
+    managementAgreed: true, deletionRequested: false, accessUrl: '#preview',
+  } : null)
+  const [loading, setLoading] = useState(!demoMode)
   const [busy, setBusy] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
   const [error, setError] = useState('')
   const [confirmedOwner, setConfirmedOwner] = useState(false)
   const [useAgreed, setUseAgreed] = useState(false)
   const [shareAgreed, setShareAgreed] = useState(false)
 
   useEffect(() => {
+    if (demoMode) return
     let cancelled = false
     void (async () => {
       setLoading(true)
@@ -75,9 +89,13 @@ export default function GuestConsentPage() {
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [token])
+  }, [token, demoMode])
 
   const decide = async (decision: 'approved' | 'declined' | 'withdrawn' | 'withdraw-all') => {
+    if (demoMode) {
+      setError('미리보기에서는 동의 내용을 변경하지 않아요.')
+      return
+    }
     if (busy || !loaded) return
     if ((decision === 'approved' || decision === 'declined') &&
         (!confirmedOwner || !useAgreed || shareAgreed !== (decision === 'approved'))) return
@@ -105,6 +123,8 @@ export default function GuestConsentPage() {
         setConfirmedOwner(false)
         setUseAgreed(false)
         setShareAgreed(false)
+        setShowDetails(false)
+        setLinkCopied(false)
       }
     } catch {
       setError('연결이 원활하지 않아요. 다시 시도해 주세요.')
@@ -112,6 +132,10 @@ export default function GuestConsentPage() {
   }
 
   const copyProfileLink = async () => {
+    if (demoMode) {
+      setError('미리보기 화면이라 실제 개인 링크는 발급되지 않아요.')
+      return
+    }
     if (!loaded?.accessUrl) return
     try {
       await navigator.clipboard.writeText(loaded.accessUrl)
@@ -126,10 +150,88 @@ export default function GuestConsentPage() {
   const approved = loaded?.decision === 'approved' && loaded.managementAgreed
   const isReview = loaded?.decision === 'needs-review'
   const internalOnly = loaded?.managementAgreed && !approved
+  const completed = Boolean(loaded?.managementAgreed && !loaded.deletionRequested &&
+    (loaded.decision === 'approved' || loaded.decision === 'declined'))
+
   return (
     <main style={{ minHeight: '100vh', maxWidth: 560, margin: '0 auto',
       padding: '32px 18px 80px', color: '#f1f0ff',
       fontFamily: "'Noto Sans KR', sans-serif" }}>
+      {demoMode && (
+        <p role="status" style={{ fontSize: 12, color: '#fcd34d', lineHeight: 1.75,
+          margin: '0 0 16px', textAlign: 'center' }}>
+          디자인 미리보기예요. 실제 동의나 열람 권한이 저장된 것은 아니에요.
+        </p>
+      )}
+      {completed && !showDetails ? (
+        <section style={{ ...S.card, textAlign: 'center', padding: '32px 20px', marginTop: 16 }}>
+          <div aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center',
+            justifyContent: 'center', width: 52, height: 52, borderRadius: '50%',
+            background: 'rgba(110,231,183,0.12)', color: '#a7f3d0',
+            fontSize: 28, fontWeight: 700, marginBottom: 12 }}>✓</div>
+          <h1 style={{ fontSize: 22, margin: '0 0 12px' }}>동의가 완료됐어요!</h1>
+          <p style={{ color: '#c9c4df', fontSize: 13, lineHeight: 1.8,
+            margin: '0 0 18px' }}>
+            선택한 동의 내용이 안전하게 저장됐어요.
+          </p>
+          <p style={{ fontSize: 13, color: approved ? '#a7f3d0' : '#ddd6fe',
+            lineHeight: 1.8, margin: '0 0 24px' }}>
+            {approved
+              ? '내 정보 보관과 프로필 공개에 동의했어요. 다른 사람에게는 이름·사진이 보이지 않아요.'
+              : '내 정보는 주선자에게만 맡겼어요. 다른 사람에게 내 프로필은 공개되지 않아요.'}
+          </p>
+          {loaded?.accessUrl ? (
+            <>
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f0ff',
+                lineHeight: 1.75, margin: '0 0 16px' }}>
+                이제 다른 소개팅 프로필도 살펴보세요.
+              </p>
+              <a href={loaded.accessUrl}
+                onClick={demoMode ? event => {
+                  event.preventDefault()
+                  setError('미리보기에서는 실제 프로필 화면으로 이동하지 않아요.')
+                } : undefined}
+                style={{ ...S.btnPrimary, display: 'block',
+                textAlign: 'center', textDecoration: 'none', padding: '14px 16px',
+                fontSize: 14 }}>
+                💘 소개팅 프로필 보기
+              </a>
+              <button type="button" onClick={() => void copyProfileLink()}
+                style={{ width: '100%', padding: '12px 16px', fontSize: 13,
+                  border: '1px solid rgba(196,181,253,0.6)', borderRadius: 10,
+                  background: 'rgba(167,139,250,0.14)', color: '#ede9fe',
+                  fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+                  marginTop: 10 }}>
+                {linkCopied ? '✓ 소개팅 프로필 링크 복사 완료' : '🔗 소개팅 프로필 링크 복사'}
+              </button>
+              <p style={{ color: '#a9a3c9', fontSize: 12, lineHeight: 1.8,
+                margin: '12px 0 20px' }}>
+                다른 브라우저에서도 이용할 수 있어요. 이 링크는 다른 사람에게 전달하지 마세요.
+              </p>
+            </>
+          ) : (
+            <p style={{ color: '#fcd34d', fontSize: 13, lineHeight: 1.8,
+              margin: '0 0 20px' }}>
+              프로필 열람 링크를 준비하지 못했어요. 주선자에게 문의해 주세요.
+            </p>
+          )}
+          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13,
+            lineHeight: 1.8, margin: '8px 0 16px' }}>{error}</p>}
+          <button type="button" className="btn-outline"
+            onClick={() => { setShowDetails(true); setLinkCopied(false); setError('') }}
+            style={{ width: '100%', padding: '11px 14px', fontSize: 13 }}>
+            동의 내용 확인·변경·철회
+          </button>
+        </section>
+      ) : (
+        <>
+      {completed && showDetails && (
+        <button type="button" className="btn-icon"
+          onClick={() => { setShowDetails(false); setError('') }}
+          style={{ marginBottom: 16, fontSize: 13 }}>
+          ← 완료 화면으로 돌아가기
+        </button>
+      )}
       <h1 style={{ fontSize: 23, marginBottom: 8 }}>💌 소개팅 프로필 공개 선택</h1>
       <p style={{ fontSize: 13, color: '#c9c4df', lineHeight: 1.8, marginBottom: 16 }}>
         소개팅을 연결하는 방법은 두 가지예요. 아래 내용을 확인한 뒤 동의 여부를 선택해 주세요.
@@ -284,6 +386,8 @@ export default function GuestConsentPage() {
             이 링크는 다른 사람에게 전달하지 말아 주세요.
             정보 수정이나 동의 철회에 문제가 있으면 주선자에게 알려주세요.
           </p>
+        </>
+      )}
         </>
       )}
     </main>
