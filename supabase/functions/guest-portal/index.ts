@@ -63,9 +63,11 @@ const guestUrl = (req: Request, key: string, type: 'key' | 'invite' = 'key') =>
 const validToken = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)
 const validName = (v: unknown, max = 40) => typeof v === 'string' && v.trim().length > 0
   && v.trim().length <= max && !/[\x00-\x1f]/.test(v)
-const rateFingerprint = async (req: Request) => 
-  await sha('guest-request-ip-v1:' + (req.headers.get('cf-connecting-ip') 
-    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'))
+const rateFingerprint = async (req: Request) => {
+  const ip = req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  return ip ? sha('guest-request-ip-v1:' + ip) : null
+}
 
 Deno.serve(async req => {
   const h = cors(req)
@@ -104,10 +106,12 @@ Deno.serve(async req => {
       }
       const ip = await rateFingerprint(req)
       const from = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-      const { count, error: countError } = await db.from('guest_access_requests')
-        .select('id', { count: 'exact', head: true }).eq('ip_fingerprint', ip).gte('created_at', from)
-      if (countError) return fail(h, 503, '신청을 확인하지 못했어요.')
-      if ((count ?? 0) >= 6) return fail(h, 429, '신청이 많아요. 잠시 후 다시 시도해 주세요.')
+      if (ip) {
+        const { count, error: countError } = await db.from('guest_access_requests')
+          .select('id', { count: 'exact', head: true }).eq('ip_fingerprint', ip).gte('created_at', from)
+        if (countError) return fail(h, 503, '신청을 확인하지 못했어요.')
+        if ((count ?? 0) >= 6) return fail(h, 429, '신청이 많아요. 잠시 후 다시 시도해 주세요.')
+      }
       const id = crypto.randomUUID()
       const nonce = crypto.randomUUID()
       const key = await visitorSecret(id, nonce)
@@ -158,9 +162,7 @@ Deno.serve(async req => {
       ])
       if (requests.error || referrers.error) return fail(h, 503, '접속 신청을 불러오지 못했어요.')
       return output(h, 200, {
-        requests: (requests.data ?? []).map(r => ({
-          ...r, personalUrl: r.status === 'approved' ? null : null,
-        })),
+        requests: requests.data ?? [],
         referrers: await Promise.all((referrers.data ?? []).map(async r => ({
           ...r, url: guestUrl(req, await inviteSecret(r.id), 'invite'),
         }))),
