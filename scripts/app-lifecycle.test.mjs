@@ -52,7 +52,11 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
   }
   const context = vm.createContext({
     URL, URLSearchParams, React,
-    window: { location: { href: `https://example.test${initialPath}` } },
+    document: { documentElement: { dataset: {} } },
+    window: {
+      location: { href: `https://example.test${initialPath}` },
+      addEventListener: () => {}, removeEventListener: () => {},
+    },
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -86,6 +90,7 @@ async function mountApp({ storage = new Map(), accountId = 'admin-a', initialRol
         }, children),
       }
       if (name === '@/lib/supabase') return { supabase }
+      if (name === 'virtual:pwa-register') return { registerSW: () => async () => {} }
       const base = name.startsWith('@/') ? path.join(src, name.slice(2)) : path.resolve(path.dirname(filename), name)
       const target = ['.ts', '.tsx'].map((extension) => base + extension).find(existsSync)
       assert.ok(target, `Cannot resolve ${name}`)

@@ -14,6 +14,7 @@ import GuestConsentPage from '@/pages/GuestConsentPage'
 import AdminGuestPage from '@/pages/AdminGuestPage'
 import AdminPublicPreviewPage from '@/pages/AdminPublicPreviewPage'
 import SettingsPage from '@/pages/SettingsPage'
+import PwaUpdateNotice from '@/components/PwaUpdateNotice'
 
 function AuthGate() {
   const { user, role, loading, signOut } = useAuth()
@@ -48,8 +49,9 @@ function AuthGate() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <>
+      <BrowserRouter>
+        <Routes>
         {/* AuthGate 밖 - 인증 처리 페이지 */}
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/invite" element={<AcceptInvitePage />} />
@@ -62,7 +64,9 @@ export default function App() {
 
         {/* AuthGate 안 - 로그인 필요 */}
         <Route path="/*" element={<AuthGate />} />
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+      <PwaUpdateNotice />
+    </>
   )
 }

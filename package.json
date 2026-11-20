@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:auth": "node --test scripts/use-auth.test.mjs",
-    "test:app": "node --test scripts/app-lifecycle.test.mjs scripts/admin-public-preview.test.mjs scripts/guest-browser-binding.test.mjs scripts/guest-consent-state.test.mjs scripts/check-supabase-migration-history.test.mjs scripts/guest-consent-self-edit.test.mjs",
+    "test:app": "node --test scripts/app-lifecycle.test.mjs scripts/admin-public-preview.test.mjs scripts/guest-browser-binding.test.mjs scripts/guest-consent-state.test.mjs scripts/check-supabase-migration-history.test.mjs scripts/pwa-consent-update.test.mjs scripts/guest-consent-self-edit.test.mjs",
     "test:invite": "node --test scripts/create-invite.test.mjs scripts/invite-ui.test.mjs",
     "test:invite:db": "npx --yes --package deno deno test --no-lock --node-modules-dir=none --allow-read --allow-env supabase/tests/invite_setup.test.ts",
     "typecheck:edge": "npx --yes --package deno deno check --no-lock --node-modules-dir=none supabase/functions/create-invite/index.ts",
