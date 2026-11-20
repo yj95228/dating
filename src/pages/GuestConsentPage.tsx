@@ -25,6 +25,7 @@ type ConsentView = {
   managementSummary: { nameStored: boolean; photoCount: number; fields: string[] }
   managementAgreed: boolean
   deletionRequested: boolean
+  accessUrl: string | null
 }
 const messageFrom = async (error: unknown, fallback: string) => {
   if (!error || typeof error !== 'object' || !('context' in error)) return fallback
@@ -98,7 +99,8 @@ export default function GuestConsentPage() {
           decision: data.decision as Decision,
           managementAgreed: data.managementAgreed === true,
           deletionRequested: data.deletionRequested === true,
-          consentedAt: data.decision === 'approved' ? new Date().toISOString() : null })
+          consentedAt: data.decision === 'approved' ? new Date().toISOString() : null,
+          accessUrl: typeof data.accessUrl === 'string' ? data.accessUrl : null })
         setConfirmedOwner(false)
         setUseAgreed(false)
         setShareAgreed(false)
@@ -135,6 +137,22 @@ export default function GuestConsentPage() {
           </p>
         </div>
       </div>
+      {loaded?.accessUrl && (
+        <section style={{ ...S.card, padding: 16, marginBottom: 18 }}>
+          <strong style={{ fontSize: 15 }}>다른 소개팅 프로필도 살펴보세요</strong>
+          <p style={{ color: '#a9a3c9', lineHeight: 1.7, fontSize: 12 }}>
+            별도 회원가입이나 관리자 승인 없이 이용할 수 있어요.
+            개인 링크는 다른 브라우저에서도 사용할 수 있으니 다른 사람에게 전달하지 마세요.
+          </p>
+          <a href={loaded.accessUrl} style={{ ...S.btnPrimary, display: 'block',
+            textAlign: 'center', textDecoration: 'none', marginTop: 12 }}>
+            소개팅 프로필 보기
+          </a>
+          <button type="button" className="btn-outline"
+            onClick={() => { if (loaded.accessUrl) void navigator.clipboard.writeText(loaded.accessUrl) }}
+            style={{ width: '100%', marginTop: 9 }}>내 개인 링크 복사</button>
+        </section>
+      )}
       {loading ? <p style={{ color: '#a9a3c9' }}>동의 정보를 불러오는 중...</p> : !loaded ? (
         <p role="alert" style={{ color: '#f87171' }}>{error}</p>
       ) : (
