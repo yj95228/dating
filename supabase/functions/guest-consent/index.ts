@@ -5,7 +5,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const appUrl = Deno.env.get('APP_URL') ?? ''
-const CONSENT_VERSION = 'guest-profile-v3'
+const CONSENT_VERSION = 'guest-profile-v4'
 const MANAGEMENT_VERSION = 'guest-management-v1'
 
 const parseOrigin = (text: string) => {
