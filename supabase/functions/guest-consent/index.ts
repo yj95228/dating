@@ -73,6 +73,7 @@ type Consent = {
   management_consented_at: string | null;
   management_consent_version: string | null;
   deletion_requested_at: string | null;
+  updated_at: string;
 }
 const profileOf = (p: Person) => ({
   gender: p.gender, year: p.year, height: p.height,
@@ -92,12 +93,41 @@ const managementSummary = (p: Person) => ({
     '이상형', '특징', '후보 상태', '매칭 이력'],
 })
 // Bind the displayed management summary to current internal records without exposing them.
+const managementIdentity = (p: Person) => ({
+  name: p.name, photos: p.photos, ...profileOf(p), status: p.status,
+})
 const managementSignature = async (p: Person) =>
   bytesHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
-    MANAGEMENT_VERSION + ':' + JSON.stringify({
-      name: p.name, photos: p.photos, ...profileOf(p), status: p.status,
-    })
+    MANAGEMENT_VERSION + ':' + JSON.stringify(managementIdentity(p))
   )))
+
+// A link holder may correct only editable public description fields.
+// Gender, relationship category, names, photos and match records stay admin-controlled.
+const editableProfile = (value: unknown, current: ReturnType<typeof profileOf>) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = value as Record<string, unknown>
+  const allowed = ['year', 'height', 'location', 'job', 'public_ideal_type', 'public_traits']
+  if (Object.keys(input).length !== allowed.length
+      || Object.keys(input).some(key => !allowed.includes(key))) return null
+  const text = (key: string, max: number) => {
+    const v = input[key]
+    if (typeof v !== 'string' || v.length > max) return null
+    return v.trim()
+  }
+  const year = text('year', 4)
+  const location = text('location', 100)
+  const job = text('job', 140)
+  const ideal = text('public_ideal_type', 600)
+  const traits = text('public_traits', 1600)
+  if (year === null || location === null || job === null || ideal === null || traits === null) return null
+  if (year && (!/^(19|20)\d{2}$/.test(year) || Number(year) > new Date().getFullYear())) return null
+  const h = input.height
+  if (h !== null && (typeof h !== 'number' || !Number.isFinite(h)
+      || h < 80 || h > 250 || Math.round(h * 10) !== h * 10)) return null
+  return { ...current, year: year || null, height: h as number | null,
+    location: location || null, job: job || null,
+    public_ideal_type: ideal, public_traits: traits }
+}
 const hmac = async (personId: number, nonce: string) => {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(serviceKey),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
@@ -124,7 +154,7 @@ const readPerson = async (admin: ReturnType<typeof adminClient>, id: number) => 
 }
 const readConsent = async (admin: ReturnType<typeof adminClient>, id: number) => {
   const { data, error } = await admin.from('guest_profile_consents')
-    .select('person_id,secret_nonce,decision,profile_signature,consented_at,decided_at,management_agreed,management_consented_at,management_consent_version,deletion_requested_at')
+    .select('person_id,secret_nonce,decision,profile_signature,consented_at,decided_at,management_agreed,management_consented_at,management_consent_version,deletion_requested_at,updated_at')
     .eq('person_id', id).maybeSingle()
   if (error) throw error
   return data as Consent | null
@@ -234,6 +264,45 @@ Deno.serve(async request => {
           return failure(headers, 409, '본인 확인·관리 동의·최신 프로필을 다시 확인해 주세요.')
         }
       }
+      // When the participant corrects public text, save their changes and their
+      // consent in one database transaction. A stale link or profile must fail
+      // closed, rather than updating people while leaving consent outdated.
+      if (body.editedProfile !== undefined) {
+        if (decision !== 'approved' && decision !== 'declined')
+          return failure(headers, 400, '프로필 수정은 동의 선택과 함께 제출해 주세요.')
+        const corrected = editableProfile(body.editedProfile, preview)
+        if (!corrected) return failure(headers, 400, '수정한 프로필의 입력값을 확인해 주세요.')
+        const correctedPerson: Person = { ...person,
+          year: corrected.year, height: corrected.height, location: corrected.location,
+          job: corrected.job, ideal_type: corrected.public_ideal_type,
+          note: corrected.public_traits,
+        }
+        const { data: saved, error: transactionError } = await admin.rpc('submit_guest_profile_decision', {
+          p_person_id: id,
+          p_nonce: consent.secret_nonce,
+          p_expected_profile: preview,
+          p_expected_management: managementIdentity(person),
+          p_expected_consent_updated_at: consent.updated_at,
+          p_new_profile: corrected,
+          p_decision: decision,
+          p_profile_signature: decision === 'approved' ? await signatureOf(corrected) : null,
+          p_consent_version: CONSENT_VERSION,
+          p_management_version: MANAGEMENT_VERSION,
+          p_management_summary: managementSummary(correctedPerson),
+        })
+        if (transactionError) return failure(headers, 503,
+          '프로필 수정·동의 저장 기능이 아직 서버에 적용되지 않았어요. 주선자에게 알려주세요.')
+        if (!saved) return failure(headers, 409,
+          '프로필 또는 동의 상태가 바뀌었어요. 페이지를 새로고침한 뒤 다시 확인해 주세요.')
+        const accessUrl = await candidateAccessUrl(admin, request, id, (await readConsent(admin, id))!)
+        return output(headers, 200, {
+          saved: true, decision, managementAgreed: true, deletionRequested: false,
+          accessUrl, profile: corrected,
+          previewSignature: await signatureOf(corrected),
+          managementSignature: await managementSignature(correctedPerson),
+        })
+      }
+
       const now = new Date().toISOString()
       const managementDetails = {
         management_agreed: true,
