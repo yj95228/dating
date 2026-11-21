@@ -517,7 +517,7 @@ export default function GuestConsentPage() {
               <button type="button" className="btn-outline" disabled={busy}
                 onClick={() => void decide('withdraw-all')}
                 style={{ width: '100%', marginTop: 10 }}>
-                동의하지 않기 · 저장 정보 삭제 요청
+                정보 보관에 동의하지 않기 · 삭제 요청
               </button>
             </section>
           )}
